@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>펠리타이저 마이크 실시간 소음 분석 및 녹음</title>
+    <style>
+        /* 기본 스타일: 모바일 우선 */
+        body { 
+            font-family: 'Malgun Gothic', 'Arial', sans-serif; 
+            padding: 10px; 
+            background-color: #f4f7f9;
+            color: #333;
+        }
+        .container { 
+            max-width: 100%; 
+            margin: 0 auto; 
+            border: none;
+            padding: 15px; 
+            border-radius: 12px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h2 { 
+            border-bottom: 3px solid #007bff; 
+            padding-bottom: 10px; 
+            margin-top: 0;
+            color: #007bff;
+            font-size: 1.5em;
+        }
+        
+        /* 입력 및 버튼 스타일 개선 */
+        input[type="number"], button { 
+            margin: 8px 0; 
+            padding: 12px; 
+            width: 100%; 
+            box-sizing: border-box; 
+            border-radius: 6px;
+            font-size: 1em;
+            border: 1px solid #ccc;
+        }
+        
+        /* 버튼 디자인 */
+        #analyzeButton {
+            background-color: #28a745; /* 녹색 */
+            color: white;
+            border: none;
+            font-weight: bold;
+        }
+        #analyzeButton:disabled {
+            background-color: #90ee90;
+        }
+        #stopButton {
+            background-color: #dc3545; /* 빨간색 */
+            color: white;
+            border: none;
+            font-weight: bold;
+        }
+        #stopButton:disabled {
+            background-color: #ffa07a;
+        }
+
+        /* 경고 및 상태 메시지 */
+        .alert-message {
+            color: #dc3545;
+            font-weight: bold;
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px dashed #dc3545;
+            border-radius: 4px;
+            background-color: #f8d7da;
+            font-size: 0.9em;
+        }
+        #status-display {
+            color: #007bff;
+            font-weight: bold;
+            padding: 10px 0;
+            border-top: 1px dashed #ddd;
+            margin-top: 10px;
+        }
+
+        /* 결과 영역 스타일 */
+        #realtime-results { 
+            margin-top: 25px; 
+            padding: 15px; 
+            background-color: #f1f1f1;
+            border-radius: 8px;
+        }
+        .label { 
+            font-weight: bold; 
+            color: #555;
+            margin-bottom: 10px;
+            display: block;
+        }
+        .result-entry { 
+            border-bottom: 1px solid #ddd; 
+            padding: 10px 0; 
+            margin-bottom: 10px; 
+        }
+        .result-entry:last-child { 
+            border-bottom: none; 
+            margin-bottom: 0; 
+        }
+        .diff-result {
+            font-size: 1.3em; 
+            color: #000;
+            background-color: #ffc107; 
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+
+        /* 데스크톱 환경(768px 이상) 최적화 */
+        @media (min-width: 768px) {
+            .container { 
+                max-width: 600px;
+                padding: 30px; 
+                border: 1px solid #ccc;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🎤 펠리타이저 마이크 실시간 소음 분석 및 녹음</h2>
+
+    <p class="alert-message">
+        **주의:** 이 기능은 **HTTPS 환경**에서만 작동하며, 브라우저가 마이크 접근 권한을 요청합니다.
+        분석 중지 시 녹음된 **WAV 파일 다운로드**가 시작됩니다.
+    </p>
+    
+    <label class="label" for="rpm">1. RPM 입력:</label>
+    <input type="number" id="rpm" value="1200" placeholder="펠리타이저 RPM을 입력하세요" min="1">
+
+    <button onclick="startMicrophoneAnalysis()" id="analyzeButton">2. 마이크 녹음 및 분석 시작</button>
+    <button onclick="stopMicrophoneAnalysis()" id="stopButton" disabled>3. 분석 중지 및 녹음 저장</button>
+    
+    <p id="status-display">RPM을 입력하고 '분석 시작' 버튼을 눌러주세요.</p>
+
+    <div id="realtime-results">
+        <p class="label">30초 구간별 실시간 분석 결과:</p>
+    </div>
+</div>
+
+<script>
+    // --- 1. 전역 변수 및 초기화 (녹음 관련 변수 추가) ---
+    let audioContext;
+    let analyser;
+    let mediaStreamSource = null;
+    let mediaStream = null;
+    let analysisIntervalId = null;
+    let recorder = null; // NEW: MediaRecorder 객체
+    let audioChunks = []; // NEW: 녹음된 오디오 데이터 청크를 저장할 배열
+
+    // 누적 변수
+    let snapshotCount = 0;
+    let cumulativeAmplitudeFund = 0;
+    let cumulativeAmplitudePeak = 0;
+    let analysisStartTime = 0; 
+
+    const rpmInput = document.getElementById('rpm');
+    const analyzeButton = document.getElementById('analyzeButton');
+    const stopButton = document.getElementById('stopButton');
+    const statusDisplay = document.getElementById('status-display');
+    const realtimeResultsDiv = document.getElementById('realtime-results');
+
+    // --- 2. 마이크 스트림 획득 및 분석 시작 (녹음 로직 추가) ---
+    async function startMicrophoneAnalysis() {
+        const rpm = parseFloat(rpmInput.value);
+        if (isNaN(rpm) || rpm <= 0) {
+            alert('유효한 RPM 값을 입력해 주세요.');
+            return;
+        }
+
+        try {
+            analyzeButton.disabled = true;
+            statusDisplay.innerText = '마이크 접근 권한 요청 중...';
+            
+            // AudioContext 초기화 (사용자 상호 작용 후 생성)
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 4096;
+            }
+
+            // 마이크 스트림 획득
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // --- NEW: MediaRecorder 설정 및 시작 ---
+            audioChunks = [];
+            
+            // WAV 포맷을 선호하며, 지원하지 않으면 브라우저 기본 포맷(예: WebM) 사용
+            if (MediaRecorder.isTypeSupported('audio/wav')) {
+                recorder = new MediaRecorder(mediaStream, { mimeType: 'audio/wav' });
+            } else {
+                recorder = new MediaRecorder(mediaStream);
+                console.warn('WAV 포맷이 지원되지 않아 기본 오디오 포맷으로 녹음됩니다.');
+            }
+            
+            recorder.ondataavailable = (event) => {
+                // 녹음 데이터가 생길 때마다 배열에 추가
+                audioChunks.push(event.data);
+            };
+
+            recorder.onstop = () => {
+                // 녹음이 멈추면 파일 다운로드 함수 실행
+                downloadWAV();
+            };
+            
+            recorder.start(); // 녹음 시작
+            statusDisplay.innerText = '마이크 연결 성공. 녹음 및 분석을 시작합니다.';
+            // --- END NEW ---
+
+
+            // 노드 생성 및 연결: 마이크 스트림 -> Analyser -> Destination 
+            mediaStreamSource = audioContext.createMediaStreamSource(mediaStream);
+            mediaStreamSource.connect(analyser);
+            mediaStreamSource.connect(audioContext.destination); 
+            
+            // 분석 시작 전 초기화
+            cumulativeAmplitudeFund = 0;
+            cumulativeAmplitudePeak = 0;
+            snapshotCount = 0;
+            realtimeResultsDiv.innerHTML = '<p class="label">30초 구간별 실시간 분석 결과:</p>';
+            analysisStartTime = audioContext.currentTime;
+            
+            // 주파수 계산
+            const F_fund = (rpm / 60) * 20;
+            const F_peak = F_fund * 7;
+
+            // 실시간 분석 루프 시작
+            realtimeAnalysisLoop(F_fund, F_peak);
+            
+            stopButton.disabled = false;
+
+        } catch (error) {
+            console.error('마이크 접근 또는 분석 오류:', error);
+            statusDisplay.innerText = `마이크 접근 오류: ${error.name}. HTTPS 환경인지, 권한을 허용했는지 확인하세요.`;
+            analyzeButton.disabled = false;
+        }
+    }
+
+    // --- 3. 분석 중지 함수 (녹음 중지 로직 추가) ---
+    function stopMicrophoneAnalysis() {
+        if (analysisIntervalId) cancelAnimationFrame(analysisIntervalId);
+        analysisIntervalId = null;
+        
+        // --- NEW: 녹음 중지 및 다운로드 트리거 ---
+        if (recorder && recorder.state !== 'inactive') {
+            // .stop()을 호출하면 onstop 이벤트가 발생하고 downloadWAV() 함수가 실행됩니다.
+            recorder.stop(); 
+            statusDisplay.innerText = "분석 중지됨. WAV 파일 다운로드를 준비 중입니다...";
+        } else {
+             statusDisplay.innerText = "분석 중지됨.";
+        }
+        // --- END NEW ---
+
+        // 마이크 스트림 해제
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
+        }
+        
+        // 오디오 노드 연결 해제
+        if (mediaStreamSource) {
+            mediaStreamSource.disconnect();
+            mediaStreamSource = null;
+        }
+
+        // 마지막 남은 구간 데이터 처리
+        if (snapshotCount > 0) {
+            const rpm = parseFloat(rpmInput.value);
+            const F_fund = (rpm / 60) * 20;
+            const F_peak = F_fund * 7;
+            calculateAndDisplayResult(F_fund, F_peak, audioContext.currentTime, true);
+        }
+        
+        // AudioContext 안전하게 닫기
+        if (audioContext && audioContext.state !== 'closed') {
+            audioContext.close().then(() => {
+                audioContext = null;
+                analyser = null;
+            });
+        }
+
+        analyzeButton.disabled = false;
+        stopButton.disabled = true;
+    }
+
+    // --- 4. WAV 파일 다운로드 함수 (NEW) ---
+    function downloadWAV() {
+        if (audioChunks.length === 0) {
+            console.error('녹음된 오디오 데이터가 없습니다.');
+            return;
+        }
+        
+        // 녹음된 실제 MIME 타입을 기반으로 Blob 생성
+        const mimeType = recorder ? recorder.mimeType : 'audio/webm'; 
+        const fileExtension = mimeType.includes('wav') ? 'wav' : (mimeType.includes('webm') ? 'webm' : 'dat'); // 파일 확장자 결정
+
+        const audioBlob = new Blob(audioChunks, { type: mimeType }); 
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        const link = document.createElement('a');
+        link.href = audioUrl;
+        // 파일명: 펠리타이저_소음_분석_YYYY-MM-DD_HHMM.확장자
+        link.download = `펠리타이저_소음_분석_${new Date().toISOString().slice(0, 16).replace('T', '_')}.${fileExtension}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        URL.revokeObjectURL(audioUrl);
+        
+        setTimeout(() => {
+             statusDisplay.innerText = `분석 중지됨. 오디오 파일(${fileExtension}) 다운로드가 완료되었습니다.`;
+        }, 500);
+
+    }
+    // --- 5. 주파수 범위 진폭 평균 계산 로직 (기존과 동일) ---
+    function getAvgAmplitudeInRange(targetFrequency, dataArray, sampleRate, fftSize) {
+        const range = targetFrequency * 0.03;
+        const lowerFreq = targetFrequency - range;
+        const upperFreq = targetFrequency + range;
+        
+        const binResolution = sampleRate / fftSize;
+        
+        let startIndex = Math.floor(lowerFreq / binResolution);
+        let endIndex = Math.ceil(upperFreq / binResolution);
+        
+        startIndex = Math.max(0, startIndex);
+        endIndex = Math.min(dataArray.length - 1, endIndex);
+        
+        if (startIndex >= endIndex || endIndex >= dataArray.length) {
+            return null;
+        }
+
+        let sumAmplitude = 0;
+        let count = 0;
+        
+        for (let i = startIndex; i <= endIndex; i++) {
+            sumAmplitude += dataArray[i];
+            count++;
+        }
+
+        return sumAmplitude / count;
+    }
+
+    // --- 6. 실시간 분석 루프 및 결과 업데이트 (기존과 동일) ---
+    function calculateAndDisplayResult(F_fund, F_peak, currentTime, isFinal = false) {
+        if (snapshotCount === 0) return;
+
+        const avgFund = cumulativeAmplitudeFund / snapshotCount;
+        const avgPeak = cumulativeAmplitudePeak / snapshotCount;
+        const difference = avgPeak - avgFund;
+
+        const endSec = Math.floor(currentTime);
+        const startSec = isFinal ? Math.floor(analysisStartTime) : Math.floor(currentTime - 30); 
+
+        const newEntry = document.createElement('div');
+        newEntry.classList.add('result-entry');
+
+        newEntry.innerHTML = `
+            <p>--- <strong>[${startSec}s ~ ${endSec}s]</strong> 분석 결과 ${isFinal ? '(최종 구간)' : ''} ---</p>
+            <p class="diff-result">진폭 차이 (Peak - Fund): <strong>${difference.toFixed(2)} dB</strong></p>
+            <p>기본 주파수(${F_fund.toFixed(2)} Hz) 평균 진폭: ${avgFund.toFixed(2)} dB</p>
+            <p>피크 주파수(${F_peak.toFixed(2)} Hz) 평균 진폭: ${avgPeak.toFixed(2)} dB</p>
+        `;
+        
+        const resultsContainer = document.getElementById('realtime-results');
+        if (resultsContainer.children.length > 0) {
+            resultsContainer.insertBefore(newEntry, resultsContainer.children[1]); 
+        } else {
+            resultsContainer.appendChild(newEntry);
+        }
+        
+        cumulativeAmplitudeFund = 0;
+        cumulativeAmplitudePeak = 0;
+        snapshotCount = 0;
+        analysisStartTime = currentTime;
+    }
+
+    function realtimeAnalysisLoop(F_fund, F_peak) {
+        if (!analyser || !audioContext || audioContext.state === 'closed') return;
+
+        const dataArray = new Float32Array(analyser.frequencyBinCount);
+        analyser.getFloatFrequencyData(dataArray); 
+
+        const sampleRate = audioContext.sampleRate;
+        const fftSize = analyser.fftSize;
+
+        const currentAmpFund = getAvgAmplitudeInRange(F_fund, dataArray, sampleRate, fftSize);
+        const currentAmpPeak = getAvgAmplitudeInRange(F_peak, dataArray, sampleRate, fftSize);
+
+        if (currentAmpFund !== null && currentAmpPeak !== null) {
+            cumulativeAmplitudeFund += currentAmpFund;
+            cumulativeAmplitudePeak += currentAmpPeak;
+            snapshotCount++;
+        }
+
+        const currentTime = audioContext.currentTime;
+        const elapsedSinceStart = currentTime - analysisStartTime;
+
+        if (elapsedSinceStart >= 30) {
+            calculateAndDisplayResult(F_fund, F_peak, currentTime, false);
+        }
+
+        analysisIntervalId = requestAnimationFrame(() => realtimeAnalysisLoop(F_fund, F_peak));
+    }
+</script>
+</body>
+</html>
