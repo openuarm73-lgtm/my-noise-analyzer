@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>펠리타이저 마이크 실시간 소음 분석</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 700px; margin: 0 auto; border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
+        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        input[type="number"], button { margin: 10px 0; padding: 10px; width: 100%; box-sizing: border-box; }
+        #realtime-results { margin-top: 20px; padding: 15px; background-color: #f9f9f9; border-radius: 5px; }
+        .label { font-weight: bold; }
+        .result-entry { border-bottom: 1px dashed #ddd; padding-bottom: 10px; margin-bottom: 10px; }
+        .result-entry:last-child { border-bottom: none; margin-bottom: 0; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🎤 펠리타이저 마이크 실시간 소음 분석</h2>
+
+    <p style="color: red;">**주의:** 이 기능은 HTTPS 환경에서만 작동하며, 브라우저가 마이크 접근 권한을 요청합니다.</p>
+    
+    <label class="label" for="rpm">1. RPM 입력:</label>
+    <input type="number" id="rpm" value="1200" placeholder="펠리타이저 RPM을 입력하세요" min="1">
+
+    <button onclick="startMicrophoneAnalysis()" id="analyzeButton">2. 마이크 녹음 및 분석 시작</button>
+    <button onclick="stopMicrophoneAnalysis()" id="stopButton" disabled>3. 분석 중지</button>
+    
+    <p id="status-display" style="color: blue;">RPM을 입력하고 '분석 시작' 버튼을 눌러주세요.</p>
+
+    <div id="realtime-results">
+        <p class="label">30초 구간별 실시간 분석 결과:</p>
+    </div>
+</div>
+
+<script>
+    // --- 1. 전역 변수 및 초기화 ---
+    let audioContext;
+    let analyser;
+    let mediaStreamSource = null;
+    let mediaStream = null;
+    let analysisIntervalId = null;
+
+    // 누적 변수
+    let snapshotCount = 0;
+    let cumulativeAmplitudeFund = 0;
+    let cumulativeAmplitudePeak = 0;
+    let analysisStartTime = 0; // 30초 주기를 측정하기 위한 시작 시간
+
+    const rpmInput = document.getElementById('rpm');
+    const analyzeButton = document.getElementById('analyzeButton');
+    const stopButton = document.getElementById('stopButton');
+    const statusDisplay = document.getElementById('status-display');
+    const realtimeResultsDiv = document.getElementById('realtime-results');
+
+    // --- 2. 마이크 스트림 획득 및 분석 시작 ---
+    async function startMicrophoneAnalysis() {
+        const rpm = parseFloat(rpmInput.value);
+        if (isNaN(rpm) || rpm <= 0) {
+            alert('유효한 RPM 값을 입력해 주세요.');
+            return;
+        }
+
+        try {
+            analyzeButton.disabled = true;
+            statusDisplay.innerText = '마이크 접근 권한 요청 중...';
+            
+            // AudioContext 초기화 (사용자 상호 작용 후 생성)
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 4096;
+            }
+
+            // 마이크 스트림 획득
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            statusDisplay.innerText = '마이크 연결 성공. 분석을 시작합니다.';
+
+            // 노드 생성 및 연결: 마이크 스트림 -> Analyser -> Destination (실시간으로 소리가 들림)
+            mediaStreamSource = audioContext.createMediaStreamSource(mediaStream);
+            mediaStreamSource.connect(analyser);
+            mediaStreamSource.connect(audioContext.destination); 
+            
+            // 분석 시작 전 초기화
+            cumulativeAmplitudeFund = 0;
+            cumulativeAmplitudePeak = 0;
+            snapshotCount = 0;
+            realtimeResultsDiv.innerHTML = '<p class="label">30초 구간별 실시간 분석 결과:</p>';
+            analysisStartTime = audioContext.currentTime;
+            
+            // 주파수 계산
+            const F_fund = (rpm / 60) * 20;
+            const F_peak = F_fund * 7;
+
+            // 실시간 분석 루프 시작
+            realtimeAnalysisLoop(F_fund, F_peak);
+            
+            stopButton.disabled = false;
+
+        } catch (error) {
+            console.error('마이크 접근 또는 분석 오류:', error);
+            statusDisplay.innerText = `마이크 접근 오류: ${error.name}. HTTPS 환경인지, 권한을 허용했는지 확인하세요.`;
+            analyzeButton.disabled = false;
+        }
+    }
+
+    // --- 3. 분석 중지 함수 ---
+    function stopMicrophoneAnalysis() {
+        if (analysisIntervalId) cancelAnimationFrame(analysisIntervalId);
+        analysisIntervalId = null;
+        
+        // 마이크 스트림 해제
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
+        }
+        
+        // 오디오 노드 연결 해제
+        if (mediaStreamSource) {
+            mediaStreamSource.disconnect();
+            mediaStreamSource = null;
+        }
+        analyser.disconnect();
+
+        // 마지막 남은 구간 데이터 처리
+        if (snapshotCount > 0) {
+            const rpm = parseFloat(rpmInput.value);
+            const F_fund = (rpm / 60) * 20;
+            const F_peak = F_fund * 7;
+            calculateAndDisplayResult(F_fund, F_peak, audioContext.currentTime, true);
+        }
+
+        statusDisplay.innerText = "분석 중지됨.";
+        analyzeButton.disabled = false;
+        stopButton.disabled = true;
+    }
+
+    // --- 4. 주파수 범위 진폭 평균 계산 로직 (이전과 동일) ---
+    function getAvgAmplitudeInRange(targetFrequency, dataArray, sampleRate, fftSize) {
+        const range = targetFrequency * 0.03;
+        const lowerFreq = targetFrequency - range;
+        const upperFreq = targetFrequency + range;
+        
+        const binResolution = sampleRate / fftSize;
+        
+        let startIndex = Math.floor(lowerFreq / binResolution);
+        let endIndex = Math.ceil(upperFreq / binResolution);
+        
+        startIndex = Math.max(0, startIndex);
+        endIndex = Math.min(dataArray.length - 1, endIndex);
+        
+        if (startIndex >= endIndex || endIndex >= dataArray.length) {
+            return null;
+        }
+
+        let sumAmplitude = 0;
+        let count = 0;
+        
+        for (let i = startIndex; i <= endIndex; i++) {
+            sumAmplitude += dataArray[i];
+            count++;
+        }
+
+        return sumAmplitude / count;
+    }
+
+    // --- 5. 실시간 분석 루프 및 결과 업데이트 ---
+    function calculateAndDisplayResult(F_fund, F_peak, currentTime, isFinal = false) {
+        if (snapshotCount === 0) return;
+
+        const avgFund = cumulativeAmplitudeFund / snapshotCount;
+        const avgPeak = cumulativeAmplitudePeak / snapshotCount;
+        const difference = avgPeak - avgFund;
+
+        const endSec = Math.floor(currentTime);
+        const startSec = isFinal ? Math.floor(analysisStartTime) : Math.floor(currentTime - 30); 
+
+        const newEntry = document.createElement('div');
+        newEntry.classList.add('result-entry');
+
+        newEntry.innerHTML = `
+            <p>--- <strong>[${startSec}s ~ ${endSec}s]</strong> 분석 결과 ${isFinal ? '(최종 구간)' : ''} ---</p>
+            <p style="font-size: 1.2em; color: darkred;">진폭 차이 (Peak - Fund): <strong>${difference.toFixed(2)} dB</strong></p>
+            <p>기본 주파수(${F_fund.toFixed(2)} Hz) 평균 진폭: ${avgFund.toFixed(2)} dB</p>
+            <p>피크 주파수(${F_peak.toFixed(2)} Hz) 평균 진폭: ${avgPeak.toFixed(2)} dB</p>
+        `;
+        
+        realtimeResultsDiv.prepend(newEntry);
+        
+        // 변수 초기화 및 다음 30초 구간 시작
+        cumulativeAmplitudeFund = 0;
+        cumulativeAmplitudePeak = 0;
+        snapshotCount = 0;
+        analysisStartTime = currentTime;
+    }
+
+    function realtimeAnalysisLoop(F_fund, F_peak) {
+        if (!analyser) return;
+
+        const dataArray = new Float32Array(analyser.frequencyBinCount);
+        analyser.getFloatFrequencyData(dataArray); 
+
+        const sampleRate = audioContext.sampleRate;
+        const fftSize = analyser.fftSize;
+
+        // 현재 스냅샷 진폭 계산
+        const currentAmpFund = getAvgAmplitudeInRange(F_fund, dataArray, sampleRate, fftSize);
+        const currentAmpPeak = getAvgAmplitudeInRange(F_peak, dataArray, sampleRate, fftSize);
+
+        if (currentAmpFund !== null && currentAmpPeak !== null) {
+            cumulativeAmplitudeFund += currentAmpFund;
+            cumulativeAmplitudePeak += currentAmpPeak;
+            snapshotCount++;
+        }
+
+        const currentTime = audioContext.currentTime;
+        const elapsedSinceStart = currentTime - analysisStartTime;
+
+        // 30초마다 결과 계산 및 리셋
+        if (elapsedSinceStart >= 30) {
+            calculateAndDisplayResult(F_fund, F_peak, currentTime, false);
+        }
+
+        // 다음 프레임 예약
+        analysisIntervalId = requestAnimationFrame(() => realtimeAnalysisLoop(F_fund, F_peak));
+    }
+</script>
+</body>
+</html>
