@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="소리분석기">
-    <title>소리 분석기 - RPM 기반 (지속 측정)</title>
+    <title>소리 분석기 - RPM 기반 (공식 수정)</title>
     <style>
         /* CSS Styles: 모바일 및 웹뷰 환경에 최적화된 디자인 */
         * {
@@ -170,7 +170,7 @@
         
         <div class="input-group">
             <label for="rpmInput">RPM 값 입력:</label>
-            <input type="number" id="rpmInput" value="1800" min="300" max="10000" step="100" inputmode="numeric">
+            <input type="number" id="rpmInput" value="1500" min="300" max="10000" step="100" inputmode="numeric">
         </div>
         
         <div class="button-group">
@@ -184,8 +184,8 @@
         </div>
         
         <div class="permission-help">
-            **✅ 현재 모드: 지속 측정 모드.**<br>
-            자동 중지 임계값이 제거되었으며, '분석 중지'를 누를 때까지 실시간으로 측정됩니다.
+            **✅ 공식 적용 확인:** $\text{RPM}/60 \times 20$ 로 기본 주파수(Hz)가 계산됩니다.<br>
+            **지속 측정 모드**로 '분석 중지'를 누를 때까지 측정됩니다.
         </div>
         
         <div class="results">
@@ -213,8 +213,6 @@
                 this.stream = null;
                 this.isRunning = false;
                 
-                // 🛑 임계값 상수를 제거했습니다.
-
                 // 이벤트 리스너 설정
                 this.connectBtn.addEventListener('click', () => this.connectMicrophone());
                 this.startButton.addEventListener('click', () => this.startAnalysis());
@@ -326,7 +324,7 @@
                 return count > 0 ? sumAmplitude / count : -100;
             }
 
-            // 🔔 핵심 분석 로직 (임계값 제거)
+            // 🔔 핵심 분석 로직 (공식 수정 완료)
             analyzeAudioStep() {
                 if (!this.isRunning || !this.analyser) {
                     return;
@@ -339,8 +337,8 @@
                 
                 this.analyser.getFloatFrequencyData(dataArray);
 
-                // 1. 주파수 계산
-                const fundamentalHz = (rpm / 60) / 20; 
+                // 1. 주파수 계산 (수정된 공식 적용: (RPM / 60) * 20)
+                const fundamentalHz = (rpm / 60) * 20; 
                 const peakHz = fundamentalHz * 7;      
 
                 // 2. 개선된 진폭 획득
@@ -364,9 +362,7 @@
                     </p>
                 `;
 
-                // 5. 🛑 임계값 비교 및 자동 중지 로직을 완전히 제거했습니다.
-
-                // 6. 다음 분석 예약
+                // 5. 다음 분석 예약
                 requestAnimationFrame(() => this.analyzeAudioStep());
             }
         }
