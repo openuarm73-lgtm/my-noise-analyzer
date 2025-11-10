@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="소리분석기">
-    <title>소리 분석기 - 노이즈 비활성화 & FFT 8192 적용</title>
+    <title>소리 분석기 - FFT 4096 원복 (노이즈 비활성화)</title>
     <style>
         /* CSS Styles: 모바일 및 웹뷰 환경에 최적화된 디자인 */
         * {
@@ -171,7 +171,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎵 소리 분석기 (원음 분석 모드)</h1>
+        <h1>🎵 소리 분석기 (FFT 4096 원복)</h1>
         
         <div class="input-group">
             <label for="rpmInput">1. RPM 값 입력:</label>
@@ -184,7 +184,7 @@
                 <input type="number" id="bladeCountInput" value="20" min="1" max="100" step="1" inputmode="numeric">
             </div>
             <div class="input-group">
-                <label for="defectFactorInput">3. 결함 주파수 배수:</label>
+                <label for="defectFactorInput">3. 결함 주파수 배수 (피크 주파수):</label>
                 <input type="number" id="defectFactorInput" value="7" min="1" max="100" step="1" inputmode="numeric">
             </div>
         </div>
@@ -193,248 +193,3 @@
             <button id="connectBtn">🎤 마이크 연결</button>
             <button id="startButton" disabled>📊 분석 시작</button>
             <button id="stopButton" disabled>⏹️ 분석 중지</button>
-        </div>
-        
-        <div class="status" id="status">
-            시작하려면 마이크 연결을 터치해주세요.
-        </div>
-        
-        <div class="permission-help">
-            **✅ 분석 조건:** $\text{AGC}$, 노이즈 억제, 에코 제거 **비활성화**.<br>
-            **✅ $\text{FFT}$ $\text{Size}$:** $\text{PC}$의 $0.2$초 분석에 가까운 **8192**로 설정되었습니다.
-        </div>
-        
-        <div class="results">
-            <h3>📈 실시간 $\text{dB}$ 차이 측정</h3>
-            <div id="currentResult">
-                분석을 시작하면 여기에 결과가 표시됩니다.
-            </div>
-        </div>
-    </div>
-
-    <script>
-        class AudioAnalyzer {
-            constructor() {
-                // HTML 요소 참조
-                this.connectBtn = document.getElementById('connectBtn');
-                this.startButton = document.getElementById('startButton');
-                this.stopButton = document.getElementById('stopButton');
-                this.rpmInput = document.getElementById('rpmInput');
-                this.bladeCountInput = document.getElementById('bladeCountInput');
-                this.defectFactorInput = document.getElementById('defectFactorInput');
-                this.statusElement = document.getElementById('status');
-                this.resultElement = document.getElementById('currentResult');
-
-                // Web Audio API 속성
-                this.audioContext = null;
-                this.analyser = null;
-                this.stream = null;
-                this.isRunning = false;
-                
-                // 이벤트 리스너 설정
-                this.connectBtn.addEventListener('click', () => this.connectMicrophone());
-                this.startButton.addEventListener('click', () => this.startAnalysis());
-                this.stopButton.addEventListener('click', () => this.stopAnalysis());
-                this.rpmInput.addEventListener('input', () => this.validateInputs());
-                this.bladeCountInput.addEventListener('input', () => this.validateInputs());
-                this.defectFactorInput.addEventListener('input', () => this.validateInputs());
-
-                this.checkMobileSupport();
-            }
-
-            checkMobileSupport() {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    this.updateStatus('이 브라우저는 마이크 접근을 지원하지 않습니다.', 'error');
-                    this.connectBtn.disabled = true;
-                }
-            }
-            
-            validateInputs() {
-                const rpm = parseInt(this.rpmInput.value);
-                const bladeCount = parseInt(this.bladeCountInput.value);
-                const defectFactor = parseInt(this.defectFactorInput.value);
-
-                let isValid = true;
-                let message = '';
-
-                if (isNaN(rpm) || rpm < 300 || rpm > 10000) {
-                    message = 'RPM 값은 300~10000 사이여야 합니다.';
-                    isValid = false;
-                } else if (isNaN(bladeCount) || bladeCount < 1) {
-                    message = '기본 주파수 배수(블레이드 수)는 1 이상이어야 합니다.';
-                    isValid = false;
-                } else if (isNaN(defectFactor) || defectFactor < 1) {
-                    message = '결함 주파수 배수는 1 이상이어야 합니다.';
-                    isValid = false;
-                }
-
-                if (isValid) {
-                    if (this.audioContext) {
-                        this.startButton.disabled = false;
-                        this.updateStatus('마이크 연결 성공. 분석을 시작할 수 있습니다.', 'success');
-                    }
-                } else {
-                    this.updateStatus(message, 'error');
-                    this.startButton.disabled = true;
-                }
-            }
-
-            updateStatus(message, type) {
-                this.statusElement.textContent = message;
-                this.statusElement.className = `status ${type}`;
-            }
-
-            async connectMicrophone() {
-                try {
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    if (this.audioContext.state === 'suspended') {
-                         await this.audioContext.resume();
-                    }
-                    
-                    // 🔔 변경: AGC, 노이즈 억제, 에코 제거 비활성화
-                    this.stream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: {
-                            autoGainControl: false,
-                            noiseSuppression: false,
-                            echoCancellation: false
-                        }
-                    });
-
-                    const source = this.audioContext.createMediaStreamSource(this.stream);
-                    
-                    // 🔔 변경: FFT Size를 8192로 설정 (0.2초 분석에 근접)
-                    this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 8192; 
-                    
-                    source.connect(this.analyser);
-                    
-                    this.connectBtn.disabled = true;
-                    this.validateInputs(); 
-                } catch (err) {
-                    this.updateStatus(`마이크 연결 실패: ${err.message}`, 'error');
-                }
-            }
-
-            startAnalysis() {
-                if (this.isRunning) return;
-                
-                const rpm = parseInt(this.rpmInput.value);
-
-                this.isRunning = true;
-                this.startButton.disabled = true;
-                this.stopButton.disabled = false;
-                this.updateStatus(`분석 중... (목표 RPM: ${rpm})`, 'analyzing');
-
-                requestAnimationFrame(() => this.analyzeAudioStep());
-            }
-
-            stopAnalysis() {
-                if (!this.isRunning) return;
-
-                this.isRunning = false;
-                
-                if (this.stream) {
-                    // 모든 트랙을 중지하여 마이크 해제
-                    this.stream.getTracks().forEach(track => track.stop());
-                }
-                
-                if (this.audioContext) {
-                    this.audioContext.close().catch(e => console.error("AudioContext close error:", e));
-                    this.audioContext = null;
-                }
-
-                this.startButton.disabled = false;
-                this.stopButton.disabled = true;
-                this.connectBtn.disabled = false;
-                this.updateStatus("분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.", 'error');
-            }
-
-            /**
-             * @private
-             * 목표 주파수(Hz)의 ±3% 범위에 해당하는 Bin을 모두 포함하여 평균 진폭(dB)을 계산합니다.
-             */
-            getAmplitudeInRange(targetHz, binWidth, dataArray) {
-                // 3% 오차를 적용한 최소/최대 주파수 계산
-                const minHz = targetHz * 0.97;
-                const maxHz = targetHz * 1.03;
-
-                // 해당 주파수를 Bin 인덱스로 변환
-                const minBin = Math.floor(minHz / binWidth);
-                const maxBin = Math.ceil(maxHz / binWidth);
-                
-                let sumAmplitude = 0;
-                let count = 0;
-                
-                // minBin부터 maxBin까지 순회하며 진폭 합산
-                for (let i = minBin; i <= maxBin; i++) {
-                    // 배열 범위 검사
-                    if (i >= 0 && i < dataArray.length) {
-                        sumAmplitude += dataArray[i];
-                        count++;
-                    }
-                }
-                
-                // 검색된 Bin이 없으면 매우 낮은 값(-100dB) 반환
-                return count > 0 ? sumAmplitude / count : -100;
-            }
-
-            // 🔔 핵심 분석 로직
-            analyzeAudioStep() {
-                if (!this.isRunning || !this.analyser) {
-                    return;
-                }
-
-                // 입력값 가져오기
-                const rpm = parseInt(this.rpmInput.value);
-                const bladeCount = parseInt(this.bladeCountInput.value);
-                const defectFactor = parseInt(this.defectFactorInput.value);
-
-                // 오디오 분석 설정
-                const sampleRate = this.audioContext.sampleRate;
-                // BinWidth는 FFT Size에 따라 자동으로 재계산됨
-                const binWidth = sampleRate / this.analyser.fftSize; 
-                const dataArray = new Float32Array(this.analyser.frequencyBinCount);
-                
-                this.analyser.getFloatFrequencyData(dataArray);
-
-                // 1. 주파수 계산
-                const fundamentalHz = (rpm / 60) * bladeCount; 
-                const peakHz = fundamentalHz * defectFactor;      
-
-                // 2. 진폭 획득 (±3% 범위 적용)
-                const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, dataArray);
-                const peakAmplitude = this.getAmplitudeInRange(peakHz, binWidth, dataArray);
-
-                // 3. 진폭 차이 (dB) 계산
-                const amplitudeDifference = peakAmplitude - fundamentalAmplitude;
-                
-                // 4. 결과 출력 포맷 설정 (임의의 색상 기준 적용)
-                const diffClass = amplitudeDifference > 0 ? 'db-diff-high' : 'db-diff-low';
-
-                this.resultElement.innerHTML = `
-                    <h3>✅ 실시간 dB 측정값</h3>
-                    <p>
-                        **기본 주파수 (${bladeCount}배):** (${fundamentalHz.toFixed(2)} Hz) 평균 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong>
-                    </p>
-                    <p>
-                        **결함 주파수 (${defectFactor}배):** (${peakHz.toFixed(2)} Hz) 평균 진폭: <strong>${peakAmplitude.toFixed(2)} dB</strong>
-                    </p>
-                    <p style="font-size: 1.2em;">
-                        dB 차이 (결함 - 기본): <span class="${diffClass}">
-                            ${amplitudeDifference.toFixed(2)} dB
-                        </span>
-                    </p>
-                `;
-
-                // 5. 다음 분석 예약
-                requestAnimationFrame(() => this.analyzeAudioStep());
-            }
-        }
-
-        // 페이지 로드 후 분석기 인스턴스 생성
-        document.addEventListener('DOMContentLoaded', () => {
-            new AudioAnalyzer();
-        });
-    </script>
-</body>
-</html>
