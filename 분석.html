@@ -165,7 +165,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎵 소리 분석기</h1>
+        <h1>🎵 소리 분석기 (임계값: -5 dB)</h1>
         
         <div class="input-group">
             <label for="rpmInput">RPM 값 입력:</label>
@@ -183,9 +183,8 @@
         </div>
         
         <div class="permission-help">
-            <strong>📋 중요 안내:</strong><br>
-            • **GitHub Pages는 HTTPS**로 동작하므로 마이크 접근이 가능합니다.<br>
-            • **WebView** 사용 시, 반드시 앱 내에서 마이크 권한을 요청하고 허용해야 분석이 작동합니다.
+            **⚠️ 현재 자동 중지 임계값: -5 dB.**<br>
+            피크 주파수와 기본 주파수의 차이가 -5 dB보다 커지면 분석이 자동으로 중지됩니다.
         </div>
         
         <div class="results">
@@ -212,6 +211,9 @@
                 this.analyser = null;
                 this.stream = null;
                 this.isRunning = false;
+                
+                // 🛑 임계값 상수 정의 (-5 dB 유지)
+                this.STOP_THRESHOLD_DB = -5; 
 
                 // 이벤트 리스너 설정
                 this.connectBtn.addEventListener('click', () => this.connectMicrophone());
@@ -246,7 +248,6 @@
 
             async connectMicrophone() {
                 try {
-                    // AudioContext 초기화 및 활성화
                     this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     if (this.audioContext.state === 'suspended') {
                          await this.audioContext.resume();
@@ -256,13 +257,13 @@
                     const source = this.audioContext.createMediaStreamSource(this.stream);
                     
                     this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 4096; // 높은 주파수 해상도를 위해 4096 사용
+                    this.analyser.fftSize = 4096; 
                     
                     source.connect(this.analyser);
                     
                     this.updateStatus('마이크 연결 성공. 분석을 시작할 수 있습니다.', 'success');
                     this.connectBtn.disabled = true;
-                    this.validateRPM(); // RPM 유효성 검사 후 시작 버튼 활성화
+                    this.validateRPM(); 
                 } catch (err) {
                     this.updateStatus(`마이크 연결 실패: ${err.message}`, 'error');
                 }
@@ -280,13 +281,14 @@
                 this.isRunning = true;
                 this.startButton.disabled = true;
                 this.stopButton.disabled = false;
-                this.updateStatus(`분석 중... (목표 RPM: ${rpm})`, 'analyzing');
+                this.updateStatus(`분석 중... (목표 RPM: ${rpm}, 임계값: ${this.STOP_THRESHOLD_DB} dB)`, 'analyzing');
 
-                // 분석 루프 시작
+                // requestAnimationFrame을 사용하여 부드러운 분석 루프 시작
                 requestAnimationFrame(() => this.analyzeAudioStep());
             }
 
             stopAnalysis() {
+                // ... (생략: 중지 로직은 이전과 동일)
                 if (!this.isRunning) return;
 
                 this.isRunning = false;
@@ -296,24 +298,20 @@
                 }
                 
                 if (this.audioContext) {
-                    this.audioContext.close();
+                    // AudioContext를 완전히 닫아 메모리 및 리소스 해제
+                    this.audioContext.close().catch(e => console.error("AudioContext close error:", e));
                     this.audioContext = null;
                 }
 
                 this.startButton.disabled = false;
                 this.stopButton.disabled = true;
-                this.connectBtn.disabled = false; // 재연결 가능하도록 버튼 활성화
+                this.connectBtn.disabled = false;
                 this.updateStatus("분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.", 'error');
             }
 
             /**
              * @private
              * 목표 주파수(Hz)를 기준으로 주변 Bin을 포함한 평균 진폭(dB)을 계산합니다.
-             * @param {number} targetHz - 목표 주파수 (Hz)
-             * @param {number} binWidth - FFT Bin 하나의 폭 (Hz/Bin)
-             * @param {Float32Array} dataArray - 진폭 배열
-             * @param {number} rangeBins - 목표 Bin의 좌우로 포함할 Bin 개수 (기본 2개)
-             * @returns {number} 평균 진폭 (dB)
              */
             getAmplitudeInRange(targetHz, binWidth, dataArray, rangeBins = 2) {
                 const targetBin = Math.round(targetHz / binWidth);
@@ -331,9 +329,12 @@
                 return count > 0 ? sumAmplitude / count : -100;
             }
 
-            // 🔔 핵심 분석 로직
+            // 🔔 핵심 분석 로직 (출력 오류 수정 및 임계값 -5 dB 적용)
             analyzeAudioStep() {
-                if (!this.isRunning || !this.analyser) return;
+                if (!this.isRunning || !this.analyser) {
+                    // 분석이 중지되었거나 분석기가 초기화되지 않았으면 종료
+                    return;
+                }
 
                 const rpm = parseInt(this.rpmInput.value);
                 const sampleRate = this.audioContext.sampleRate;
@@ -343,8 +344,8 @@
                 this.analyser.getFloatFrequencyData(dataArray);
 
                 // 1. 주파수 계산
-                const fundamentalHz = (rpm / 60) / 20; // 기본 주파수
-                const peakHz = fundamentalHz * 7;      // 피크 주파수
+                const fundamentalHz = (rpm / 60) / 20; 
+                const peakHz = fundamentalHz * 7;      
 
                 // 2. 개선된 진폭 획득 (주변 2 Bin 포함)
                 const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, dataArray, 2);
@@ -353,8 +354,8 @@
                 // 3. 진폭 차이 (dB) 계산
                 const amplitudeDifference = peakAmplitude - fundamentalAmplitude;
                 
-                // 4. 결과 출력 포맷 설정
-                const diffClass = amplitudeDifference > -25 ? 'db-diff-high' : 'db-diff-low';
+                // 4. 결과 출력 포맷 설정 및 갱신 (빈 값 출력 오류 방지)
+                const diffClass = amplitudeDifference > this.STOP_THRESHOLD_DB ? 'db-diff-high' : 'db-diff-low';
 
                 this.resultElement.innerHTML = `
                     <h3>✅ 실시간 dB 측정값</h3>
@@ -367,11 +368,11 @@
                     </p>
                 `;
 
-                // 5. 정지 조건: dB 차이가 -25보다 클 경우 자동 중지 (소리 이상 감지 가정)
-                if (amplitudeDifference > -25) { 
+                // 5. 🛑 정지 조건: dB 차이가 -5보다 클 경우 자동 중지
+                if (amplitudeDifference > this.STOP_THRESHOLD_DB) { 
                     this.stopAnalysis();
-                    this.statusElement.innerHTML = "<p style='color: red; font-weight: bold;'>🚨 임계값 초과! 분석 자동 중단.</p>";
-                    this.resultElement.innerHTML += "<p style='color: red;'> **경고: 피크 주파수 성분이 기본 주파수 성분보다 너무 강합니다!**</p>";
+                    this.statusElement.innerHTML = `<p style='color: red; font-weight: bold;'>🚨 임계값 (${this.STOP_THRESHOLD_DB} dB) 초과! 분석 자동 중단.</p>`;
+                    this.resultElement.innerHTML += `<p style='color: red;'> **경고: 피크 주파수 성분이 기본 주파수 성분과의 차이가 ${this.STOP_THRESHOLD_DB} dB를 초과했습니다!**</p>`;
                     return;
                 }
 
@@ -384,10 +385,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             new AudioAnalyzer();
         });
-    </script>
-</body>
-</html>
-        const analyzer = new MobileAudioAnalyzer();
     </script>
 </body>
 </html>
