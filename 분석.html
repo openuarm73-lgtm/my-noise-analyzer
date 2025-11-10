@@ -1,280 +1,410 @@
-       <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>소리 분석 웹앱</title>
-  <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 10px; }
-    label, input, button { font-size: 1.2em; }
-    .controls { display: flex; flex-direction: column; gap: 18px; margin-bottom: 24px; }
-    button { padding: 10px 12px; border-radius: 5px; border: 1px solid #bbb; background: #f9f9f9; }
-    .result { margin-top: 24px; font-size: 1.15em; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>소리 분석기 - RPM 기반</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #4a5568;
+            margin-bottom: 30px;
+            font-size: 1.8em;
+        }
+        
+        .input-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        
+        input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        button {
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        #connectBtn {
+            background: #48bb78;
+            color: white;
+        }
+        
+        #connectBtn:hover {
+            background: #38a169;
+        }
+        
+        #startBtn {
+            background: #4299e1;
+            color: white;
+        }
+        
+        #startBtn:hover {
+            background: #3182ce;
+        }
+        
+        #stopBtn {
+            background: #f56565;
+            color: white;
+        }
+        
+        #stopBtn:hover {
+            background: #e53e3e;
+        }
+        
+        button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            background: #f7fafc;
+            border-left: 4px solid #4299e1;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .results {
+            background: #f0fff4;
+            border: 2px solid #9ae6b4;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .measurement {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .final-result {
+            background: #fed7d7;
+            border: 2px solid #fc8181;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+            text-align: center;
+        }
+        
+        .analyzing {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            h1 {
+                font-size: 1.5em;
+            }
+            
+            button {
+                padding: 12px;
+                font-size: 14px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h2>소리 분석 (RPM 기반)</h2>
-  <div class="controls">
-    <label>RPM 입력: <input type="number" id="rpmInput" min="1" value="1800" style="width:90px"></label>
-    <button id="micBtn">마이크 연결</button>
-    <button id="startBtn">분석 시작</button>
-    <button id="stopBtn">분석 중지</button>
-  </div>
-  <div class="result" id="result"></div>
-
-  <script>
-    let audioContext, analyser, source, mediaStream;
-    let intervalId, startTime, allDiffs = [];
-    let isAnalyzing = false;
-
-    const rpmInput = document.getElementById('rpmInput');
-    const micBtn = document.getElementById('micBtn');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const resultDiv = document.getElementById('result');
-
-    // 주파수 Bin Index 계산 함수
-    function freqToIndex(freq, sampleRate, fftSize) {
-      return Math.round(freq / (sampleRate / fftSize));
-    }
-
-    // 마이크 연결
-    micBtn.onclick = async function() {
-      if (audioContext) audioContext.close();
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({audio: true});
-        source = audioContext.createMediaStreamSource(mediaStream);
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
-        source.connect(analyser);
-        resultDiv.textContent = "마이크가 연결되었습니다.";
-      } catch (e) {
-        resultDiv.textContent = "마이크 연결 실패: " + e.message;
-      }
-    };
-
-    // 단일 분석 함수
-    function analyze(rpm) {
-      const buffer = new Float32Array(analyser.frequencyBinCount);
-      analyser.getFloatFrequencyData(buffer);
-      const sampleRate = audioContext.sampleRate;
-      const fftSize = analyser.fftSize;
-
-      const baseFreq = rpm / 3;
-      const peakFreq = baseFreq * 7;
-
-      const baseIdx = freqToIndex(baseFreq, sampleRate, fftSize);
-      const peakIdx = freqToIndex(peakFreq, sampleRate, fftSize);
-
-      // 주변값 포함 평균 (±2)
-      function avgAround(idx) {
-        const range = 2, arr = [];
-        for(let i=Math.max(0,idx-range); i<=Math.min(buffer.length-1,idx+range); ++i) arr.push(buffer[i]);
-        return arr.reduce((a,b)=>a+b,0)/arr.length;
-      }
-      const avgBase = avgAround(baseIdx);
-      const avgPeak = avgAround(peakIdx);
-
-      return { avgBase, avgPeak, diff: avgPeak - avgBase };
-    }
-
-    // 분석 과정 로직
-    startBtn.onclick = function() {
-      if (!analyser) { resultDiv.textContent = "먼저 마이크를 연결하세요."; return; }
-      if (isAnalyzing) return;
-      isAnalyzing = true;
-      allDiffs = [];
-      startTime = Date.now();
-      resultDiv.textContent = "분석을 시작합니다.";
-      const rpm = Number(rpmInput.value);
-
-      // 20초 주기 측정 함수
-      function loop() {
-        let cnt = 0;
-        const measure = () => {
-          const {avgBase, avgPeak, diff} = analyze(rpm);
-          allDiffs.push(diff);
-          resultDiv.innerHTML = `20초 측정:<br>피크-기본 평균진폭차: <b>${diff.toFixed(2)}</b>`;
-          cnt++;
-          if (isAnalyzing) intervalId = setTimeout(measure, 20000);
-        };
-        measure();
-      }
-      loop();
-    };
-
-    // 분석 중지 및 전체 결과 표시
-    stopBtn.onclick = function() {
-      if (!isAnalyzing) return;
-      isAnalyzing = false;
-      clearTimeout(intervalId);
-      if (allDiffs.length > 0) {
-        const totalDiff = allDiffs.reduce((a,b)=>a+b,0)/allDiffs.length;
-        const duration = ((Date.now() - startTime)/1000).toFixed(1);
-        resultDiv.innerHTML = `
-           전체 측정 (${duration}초 동안 평균):<br>
-          피크주파수-기본주파수 평균진폭 차이: <b>${totalDiff.toFixed(2)}</b>
-        `;
-      } else {
-        resultDiv.textContent = "측정된 값이 없습니다.";
-      }
-    };
-  </script>
-</body>
-</html>
-        if (mediaStream) {
-            mediaStream.getTracks().forEach(track => track.stop());
-            // mediaStream = null; // 연결을 유지할 필요 없음 (재분석시 재연결)
-        }
-        if (mediaStreamSource) {
-            mediaStreamSource.disconnect();
-            // mediaStreamSource = null;
-        }
-
-        if (audioContext) { 
-            const rpm = parseFloat(rpmInput.value);
-            const F_fund = (rpm / 60) * 20;
-            const F_peak = F_fund * 7;
-            calculateAndDisplayResult(F_fund, F_peak, audioContext.currentTime, true); // 최종 구간 계산
-        }
+    <div class="container">
+        <h1>🎵 소리 분석기</h1>
         
-        // AudioContext는 연결 버튼에서 재개해야 하므로 닫지 않음
+        <div class="input-group">
+            <label for="rpmInput">RPM 값 입력:</label>
+            <input type="number" id="rpmInput" value="1800" min="300" max="10000" step="100">
+        </div>
         
-        analyzeButton.disabled = false;
-        stopButton.disabled = true;
-        connectButton.disabled = true; // 분석 정지 후에는 다시 연결 버튼을 활성화할 필요 없음 (재분석 가능)
-    }
+        <div class="button-group">
+            <button id="connectBtn">🎤 마이크 연결</button>
+            <button id="startBtn" disabled>📊 분석 시작</button>
+            <button id="stopBtn" disabled>⏹️ 분석 중지</button>
+        </div>
+        
+        <div class="status" id="status">
+            시작하려면 먼저 마이크를 연결해주세요.
+        </div>
+        
+        <div class="results" id="results" style="display: none;">
+            <h3>📈 측정 결과</h3>
+            <div id="measurementList"></div>
+            <div id="finalResult"></div>
+        </div>
+    </div>
 
-    // --- 5. 주파수 범위 진폭 평균 계산 로직 (생략) ---
-    function getAvgAmplitudeInRange(targetFrequency, dataArray, sampleRate, fftSize) {
-        const range = targetFrequency * 0.03; 
-        const lowerFreq = targetFrequency - range;
-        const upperFreq = targetFrequency + range;
-        const binResolution = sampleRate / fftSize;
-        
-        let startIndex = Math.floor(lowerFreq / binResolution);
-        let endIndex = Math.ceil(upperFreq / binResolution);
-        
-        startIndex = Math.max(0, startIndex);
-        endIndex = Math.min(dataArray.length - 1, endIndex);
-        
-        if (startIndex >= endIndex || endIndex >= dataArray.length) { return null; }
-        
-        let sumAmplitude = 0;
-        let count = 0;
-        for (let i = startIndex; i <= endIndex; i++) { 
-            sumAmplitude += dataArray[i]; 
-            count++; 
-        }
-        return sumAmplitude / count;
-    }
-
-    // --- 6. 실시간 분석 결과 계산 및 업데이트 (NaN 방지 로직 포함) ---
-    function calculateAndDisplayResult(F_fund, F_peak, currentTime, isFinal = false) {
-        
-        const elapsedSinceStart = currentTime - analysisStartTime;
-        
-        let startSec;
-        let endSec;
-
-        if (isFinal) {
-            // 정지 시: 마지막 리셋 시점부터 현재까지의 잔여 구간
-            startSec = Math.floor(analysisStartTime); 
-            if (startSec < FIRST_SEGMENT_START) startSec = FIRST_SEGMENT_START;
-            endSec = Math.floor(currentTime);
-        } else {
-            // 20초 주기 자동 분석 시: 
-            const intervalNumber = Math.floor(elapsedSinceStart / INTERVAL_SEC);
-            startSec = FIRST_SEGMENT_START + intervalNumber * INTERVAL_SEC; 
-            endSec = startSec + INTERVAL_SEC;
-        }
-
-        const segmentDuration = endSec - startSec;
-        
-        let avgFund, avgPeak, difference, message = '';
-
-        if (snapshotCount === 0) {
-            // [NaN 방지]: 데이터가 없을 때 0.00으로 처리
-            avgFund = 0.00;
-            avgPeak = 0.00;
-            difference = 0.00;
-            message = `[감지 실패] 데이터 부족. 유효 진폭 미감지. (dB 값 0으로 처리)`;
-
-            if (isFinal && segmentDuration <= 2 && startSec > 0) { 
-                statusDisplay.innerText = `🔴 분석 정지됨. 최종 ${segmentDuration}초 잔여 구간은 소음 감지가 어렵거나 짧아 기록을 생략합니다.`;
+    <script>
+        class AudioAnalyzer {
+            constructor() {
+                this.audioContext = null;
+                this.analyser = null;
+                this.source = null;
+                this.mediaStream = null;
+                this.isConnected = false;
+                this.isAnalyzing = false;
+                this.measurements = [];
+                this.startTime = null;
+                this.intervalId = null;
+                this.measurementCount = 0;
                 
-                // 변수 리셋
-                cumulativeAmplitudeFund = 0;
-                cumulativeAmplitudePeak = 0;
-                snapshotCount = 0;
-                analysisStartTime = currentTime;
-                return;
+                this.initializeElements();
+                this.bindEvents();
             }
-        } else {
-            // 데이터가 있을 경우 정상 계산
-            avgFund = cumulativeAmplitudeFund / snapshotCount;
-            avgPeak = cumulativeAmplitudePeak / snapshotCount;
-            difference = parseFloat((avgPeak - avgFund).toFixed(2));
-        }
-
-        // 결과 HTML 생성
-        const newEntry = document.createElement('div');
-        newEntry.classList.add('result-entry');
-
-        newEntry.innerHTML = `
-            <p><strong>구간:</strong> ${startSec}s ~ ${endSec}s ${isFinal ? '(최종 평균)' : ''}</p>
-            <p class="diff-result">진폭 차이 (Peak - Fund) 평균: <strong>${difference.toFixed(2)} dB</strong></p>
-            <p><strong>기본 주파수 (${F_fund.toFixed(2)} Hz):</strong> ${avgFund.toFixed(2)} dB</p>
-            <p><strong>피크 주파수 (${F_peak.toFixed(2)} Hz):</strong> ${avgPeak.toFixed(2)} dB</p>
-            ${snapshotCount === 0 ? `<p style="color: #ffab91; font-weight: bold;">${message}</p>` : ''}
-        `;
-        
-        resultsContainer.insertBefore(newEntry, resultsContainer.children[1]); 
-        
-        // 변수 리셋
-        cumulativeAmplitudeFund = 0;
-        cumulativeAmplitudePeak = 0;
-        snapshotCount = 0;
-        analysisStartTime = currentTime;
-
-        if (isFinal) {
-             statusDisplay.innerText = "✅ 분석 중지됨. 최종 결과가 기록되었습니다.";
-        } else if (snapshotCount === 0) {
-             statusDisplay.innerText = `🟡 분석 중... ${startSec}s ~ ${endSec}s 구간 소음 미감지. (dB 0 처리)`;
-        }
-    }
-
-    // --- 7. 실시간 분석 루프 ---
-    function realtimeAnalysisLoop(F_fund, F_peak) {
-        if (!analyser || !audioContext || audioContext.state === 'closed') return;
-
-        const dataArray = new Float32Array(analyser.frequencyBinCount);
-        analyser.getFloatFrequencyData(dataArray); 
-
-        const sampleRate = audioContext.sampleRate;
-        const fftSize = analyser.fftSize;
-
-        const currentAmpFund = getAvgAmplitudeInRange(F_fund, dataArray, sampleRate, fftSize);
-        const currentAmpPeak = getAvgAmplitudeInRange(F_peak, dataArray, sampleRate, fftSize);
-
-        if (currentAmpFund !== null && currentAmpPeak !== null) {
-            cumulativeAmplitudeFund += currentAmpFund;
-            cumulativeAmplitudePeak += currentAmpPeak;
-            snapshotCount++;
-        }
-
-        const currentTime = audioContext.currentTime;
-        const elapsedSinceStart = currentTime - analysisStartTime;
-
-        // 20초마다 결과 계산 및 리셋
-        if (elapsedSinceStart >= INTERVAL_SEC) {
-            calculateAndDisplayResult(F_fund, F_peak, currentTime, false);
-        }
-
-        analysisIntervalId = requestAnimationFrame(() => realtimeAnalysisLoop(F_fund, F_peak));
-    }
-</script>
-</body>
-</html> 
+            
+            initializeElements() {
+                this.rpmInput = document.getElementById('rpmInput');
+                this.connectBtn = document.getElementById('connectBtn');
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.status = document.getElementById('status');
+                this.results = document.getElementById('results');
+                this.measurementList = document.getElementById('measurementList');
+                this.finalResult = document.getElementById('finalResult');
+            }
+            
+            bindEvents() {
+                this.connectBtn.addEventListener('click', () => this.connectMicrophone());
+                this.startBtn.addEventListener('click', () => this.startAnalysis());
+                this.stopBtn.addEventListener('click', () => this.stopAnalysis());
+            }
+            
+            async connectMicrophone() {
+                try {
+                    this.updateStatus('마이크 연결 중...', 'analyzing');
+                    
+                    if (this.audioContext) {
+                        await this.audioContext.close();
+                    }
+                    
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: false,
+                            noiseSuppression: false,
+                            autoGainControl: false
+                        } 
+                    });
+                    
+                    this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
+                    this.analyser = this.audioContext.createAnalyser();
+                    this.analyser.fftSize = 4096;
+                    this.analyser.smoothingTimeConstant = 0.3;
+                    
+                    this.source.connect(this.analyser);
+                    
+                    this.isConnected = true;
+                    this.connectBtn.textContent = '✅ 연결됨';
+                    this.connectBtn.disabled = true;
+                    this.startBtn.disabled = false;
+                    
+                    this.updateStatus('마이크가 성공적으로 연결되었습니다. 분석을 시작할 수 있습니다.');
+                    
+                } catch (error) {
+                    console.error('마이크 연결 실패:', error);
+                    this.updateStatus('마이크 연결에 실패했습니다. 브라우저 권한을 확인해주세요.');
+                }
+            }
+            
+            startAnalysis() {
+                if (!this.isConnected) {
+                    this.updateStatus('먼저 마이크를 연결해주세요.');
+                    return;
+                }
+                
+                this.isAnalyzing = true;
+                this.measurements = [];
+                this.measurementCount = 0;
+                this.startTime = Date.now();
+                
+                this.startBtn.disabled = true;
+                this.stopBtn.disabled = false;
+                this.connectBtn.disabled = true;
+                
+                this.results.style.display = 'block';
+                this.measurementList.innerHTML = '';
+                this.finalResult.innerHTML = '';
+                
+                this.updateStatus('분석을 시작합니다...', 'analyzing');
+                
+                this.performMeasurement();
+            }
+            
+            performMeasurement() {
+                if (!this.isAnalyzing) return;
+                
+                const rpm = parseInt(this.rpmInput.value);
+                const baseFreq = rpm / 3;
+                const peakFreq = baseFreq * 7;
+                
+                // 20초 동안 데이터 수집
+                const measurementData = [];
+                const measurementInterval = setInterval(() => {
+                    if (!this.isAnalyzing) {
+                        clearInterval(measurementInterval);
+                        return;
+                    }
+                    
+                    const result = this.analyzeSingleFrame(baseFreq, peakFreq);
+                    measurementData.push(result);
+                    
+                }, 100); // 100ms마다 샘플링
+                
+                // 20초 후 평균 계산
+                setTimeout(() => {
+                    if (!this.isAnalyzing) {
+                        clearInterval(measurementInterval);
+                        return;
+                    }
+                    
+                    clearInterval(measurementInterval);
+                    
+                    if (measurementData.length > 0) {
+                        const avgBaseline = measurementData.reduce((sum, data) => sum + data.baselineAmplitude, 0) / measurementData.length;
+                        const avgPeak = measurementData.reduce((sum, data) => sum + data.peakAmplitude, 0) / measurementData.length;
+                        const difference = avgPeak - avgBaseline;
+                        
+                        this.measurementCount++;
+                        const measurement = {
+                            count: this.measurementCount,
+                            timestamp: Date.now(),
+                            baseFreq,
+                            peakFreq,
+                            avgBaseline,
+                            avgPeak,
+                            difference,
+                            rpm
+                        };
+                        
+                        this.measurements.push(measurement);
+                        this.displayMeasurement(measurement);
+                        
+                        this.updateStatus(`측정 완료 (${this.measurementCount}회차). 다음 측정까지 대기 중...`, 'analyzing');
+                        
+                        // 다음 측정 예약
+                        if (this.isAnalyzing) {
+                            this.performMeasurement();
+                        }
+                    }
+                }, 20000); // 20초
+            }
+            
+            analyzeSingleFrame(baseFreq, peakFreq) {
+                const bufferLength = this.analyser.frequencyBinCount;
+                const dataArray = new Float32Array(bufferLength);
+                this.analyser.getFloatFrequencyData(dataArray);
+                
+                const sampleRate = this.audioContext.sampleRate;
+                const nyquist = sampleRate / 2;
+                
+                const getAmplitudeAtFreq = (frequency) => {
+                    const binIndex = Math.round((frequency / nyquist) * bufferLength);
+                    const startBin = Math.max(0, binIndex - 2);
+                    const endBin = Math.min(bufferLength - 1, binIndex + 2);
+                    
+                    let sum = 0;
+                    let count = 0;
+                    for (let i = startBin; i <= endBin; i++) {
+                        sum += Math.pow(10, dataArray[i] / 20); // dB를 선형으로 변환
+                        count++;
+                    }
+                    return count > 0 ? sum / count : 0;
+                };
+                
+                return {
+                    baselineAmplitude: getAmplitudeAtFreq(baseFreq),
+                    peakAmplitude: getAmplitudeAtFreq(peakFreq)
+                };
+            }
+            
+            displayMeasurement(measurement) {
+                const div = document.createElement('div');
+                div.className = 'measurement';
+                div.innerHTML = `
+                    <strong>측정 ${measurement.count}회차</strong> (${new Date(measurement.timestamp).toLocaleTimeString()})<br>
+                    RPM: ${measurement.rpm} | 기본주파수: ${measurement.baseFreq.toFixed(1)}Hz | 피크주파수: ${measurement.peakFreq.toFixed(1)}Hz<br>
+                    기본진폭: ${measurement.avgBaseline.toFixed(4)} | 피크진폭: ${measurement.avgPeak.toFixed(4)}<br>
+                    <strong>차이값: ${measurement.difference.toFixed(4)}</strong>
+                `;
+                this.measurementList.appendChild(div);
+                this.measurementList.scrollTop = this.measurementList.scrollHeight;
+            }
+            
+            stopAnalysis() {
+                this.isAnalyzing = false;
+                
+                if (this.intervalId) {
+                    clearInterval(this.intervalId);
+                }
+                
+                this.startBtn.disabled = false;
+                this.stopBtn.disabled = true;
+                this.connectBtn.disabled = false;
+                
+                const endTime = Date.now();
+                const totalDuration = (endTime - this.startTime) / 1000;
+                
+                if (this.measurements.length > 0) {
+                    const avgDifference = this.measurements.reduce((sum, m) => sum + m.difference, 0) / this.measurements.length
