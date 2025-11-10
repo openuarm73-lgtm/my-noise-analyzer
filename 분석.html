@@ -84,7 +84,7 @@
             color: white;
         }
         
-        #connectBtn:hover {
+        #connectBtn:hover:not(:disabled) {
             background: #38a169;
         }
         
@@ -93,7 +93,7 @@
             color: white;
         }
         
-        #startBtn:hover {
+        #startBtn:hover:not(:disabled) {
             background: #3182ce;
         }
         
@@ -102,12 +102,12 @@
             color: white;
         }
         
-        #stopBtn:hover {
+        #stopBtn:hover:not(:disabled) {
             background: #e53e3e;
         }
         
         button:disabled {
-            background: #cbd5e0;
+            background: #cbd5e0 !important;
             cursor: not-allowed;
         }
         
@@ -117,6 +117,25 @@
             padding: 15px;
             margin-bottom: 20px;
             border-radius: 0 8px 8px 0;
+            min-height: 50px;
+        }
+        
+        .status.error {
+            background: #fed7d7;
+            border-left-color: #f56565;
+            color: #c53030;
+        }
+        
+        .status.success {
+            background: #f0fff4;
+            border-left-color: #48bb78;
+            color: #2f855a;
+        }
+        
+        .status.analyzing {
+            background: #fefcbf;
+            border-left-color: #d69e2e;
+            animation: pulse 2s infinite;
         }
         
         .results {
@@ -125,6 +144,7 @@
             border-radius: 8px;
             padding: 20px;
             margin-top: 20px;
+            display: none;
         }
         
         .measurement {
@@ -144,13 +164,18 @@
             text-align: center;
         }
         
-        .analyzing {
-            animation: pulse 2s infinite;
-        }
-        
         @keyframes pulse {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            50% { opacity: 0.7; }
+        }
+        
+        .permission-help {
+            background: #ebf8ff;
+            border: 1px solid #90cdf4;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-size: 14px;
         }
         
         @media (max-width: 480px) {
@@ -186,10 +211,17 @@
         </div>
         
         <div class="status" id="status">
-            시작하려면 먼저 마이크를 연결해주세요.
+            시작하려면 마이크 연결을 클릭해주세요.
         </div>
         
-        <div class="results" id="results" style="display: none;">
+        <div class="permission-help" id="helpText">
+            <strong>📋 사용 안내:</strong><br>
+            • HTTPS 환경에서만 작동합니다 (localhost는 가능)<br>
+            • 브라우저에서 마이크 권한 허용이 필요합니다<br>
+            • Chrome, Firefox, Safari 등 최신 브라우저 권장
+        </div>
+        
+        <div class="results" id="results">
             <h3>📈 측정 결과</h3>
             <div id="measurementList"></div>
             <div id="finalResult"></div>
@@ -207,11 +239,12 @@
                 this.isAnalyzing = false;
                 this.measurements = [];
                 this.startTime = null;
-                this.intervalId = null;
+                this.currentMeasurementTimeout = null;
                 this.measurementCount = 0;
                 
                 this.initializeElements();
                 this.bindEvents();
+                this.checkBrowserSupport();
             }
             
             initializeElements() {
@@ -223,6 +256,7 @@
                 this.results = document.getElementById('results');
                 this.measurementList = document.getElementById('measurementList');
                 this.finalResult = document.getElementById('finalResult');
+                this.helpText = document.getElementById('helpText');
             }
             
             bindEvents() {
@@ -231,46 +265,102 @@
                 this.stopBtn.addEventListener('click', () => this.stopAnalysis());
             }
             
+            checkBrowserSupport() {
+                // HTTPS 체크
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                    this.updateStatus('⚠️ HTTPS 환경에서만 마이크를 사용할 수 있습니다.', 'error');
+                    this.connectBtn.disabled = true;
+                    return;
+                }
+                
+                // getUserMedia 지원 체크
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    this.updateStatus('❌ 이 브라우저는 마이크 접근을 지원하지 않습니다.', 'error');
+                    this.connectBtn.disabled = true;
+                    return;
+                }
+                
+                // Web Audio API 지원 체크
+                if (!window.AudioContext && !window.webkitAudioContext) {
+                    this.updateStatus('❌ 이 브라우저는 Web Audio API를 지원하지 않습니다.', 'error');
+                    this.connectBtn.disabled = true;
+                    return;
+                }
+            }
+            
             async connectMicrophone() {
                 try {
-                    this.updateStatus('마이크 연결 중...', 'analyzing');
+                    this.updateStatus('🔄 마이크 연결 중... 권한을 허용해주세요.', 'analyzing');
+                    this.connectBtn.disabled = true;
                     
-                    if (this.audioContext) {
+                    // 기존 연결 정리
+                    if (this.mediaStream) {
+                        this.mediaStream.getTracks().forEach(track => track.stop());
+                    }
+                    if (this.audioContext && this.audioContext.state !== 'closed') {
                         await this.audioContext.close();
                     }
                     
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    // 새 오디오 컨텍스트 생성
+                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                    this.audioContext = new AudioContextClass();
+                    
+                    // 마이크 권한 요청 및 스트림 획득
+                    this.mediaStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
                             echoCancellation: false,
                             noiseSuppression: false,
-                            autoGainControl: false
-                        } 
+                            autoGainControl: false,
+                            sampleRate: 44100
+                        }
                     });
                     
+                    // 오디오 분석기 설정
                     this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
                     this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 4096;
+                    this.analyser.fftSize = 8192; // 더 높은 주파수 해상도
                     this.analyser.smoothingTimeConstant = 0.3;
+                    this.analyser.minDecibels = -100;
+                    this.analyser.maxDecibels = -30;
                     
                     this.source.connect(this.analyser);
                     
+                    // 연결 성공
                     this.isConnected = true;
-                    this.connectBtn.textContent = '✅ 연결됨';
-                    this.connectBtn.disabled = true;
+                    this.connectBtn.textContent = '✅ 연결완료';
                     this.startBtn.disabled = false;
+                    this.helpText.style.display = 'none';
                     
-                    this.updateStatus('마이크가 성공적으로 연결되었습니다. 분석을 시작할 수 있습니다.');
+                    this.updateStatus('✅ 마이크가 성공적으로 연결되었습니다!', 'success');
+                    
+                    // 오디오 컨텍스트 재개 (일부 브라우저에서 필요)
+                    if (this.audioContext.state === 'suspended') {
+                        await this.audioContext.resume();
+                    }
                     
                 } catch (error) {
                     console.error('마이크 연결 실패:', error);
-                    this.updateStatus('마이크 연결에 실패했습니다. 브라우저 권한을 확인해주세요.');
+                    this.connectBtn.disabled = false;
+                    
+                    let errorMessage = '❌ 마이크 연결에 실패했습니다. ';
+                    
+                    if (error.name === 'NotAllowedError') {
+                        errorMessage += '마이크 권한을 허용해주세요.';
+                    } else if (error.name === 'NotFoundError') {
+                        errorMessage += '마이크 장치를 찾을 수 없습니다.';
+                    } else if (error.name === 'NotReadableError') {
+                        errorMessage += '마이크가 다른 앱에서 사용 중입니다.';
+                    } else {
+                        errorMessage += `오류: ${error.message}`;
+                    }
+                    
+                    this.updateStatus(errorMessage, 'error');
                 }
             }
             
             startAnalysis() {
-                if (!this.isConnected) {
-                    this.updateStatus('먼저 마이크를 연결해주세요.');
+                if (!this.isConnected || !this.analyser) {
+                    this.updateStatus('먼저 마이크를 연결해주세요.', 'error');
                     return;
                 }
                 
@@ -287,7 +377,7 @@
                 this.measurementList.innerHTML = '';
                 this.finalResult.innerHTML = '';
                 
-                this.updateStatus('분석을 시작합니다...', 'analyzing');
+                this.updateStatus('🔍 분석을 시작합니다... (20초간 측정)', 'analyzing');
                 
                 this.performMeasurement();
             }
@@ -299,112 +389,5 @@
                 const baseFreq = rpm / 3;
                 const peakFreq = baseFreq * 7;
                 
-                // 20초 동안 데이터 수집
-                const measurementData = [];
-                const measurementInterval = setInterval(() => {
-                    if (!this.isAnalyzing) {
-                        clearInterval(measurementInterval);
-                        return;
-                    }
-                    
-                    const result = this.analyzeSingleFrame(baseFreq, peakFreq);
-                    measurementData.push(result);
-                    
-                }, 100); // 100ms마다 샘플링
+                // 20초 동안 100ms마다 샘플링
                 
-                // 20초 후 평균 계산
-                setTimeout(() => {
-                    if (!this.isAnalyzing) {
-                        clearInterval(measurementInterval);
-                        return;
-                    }
-                    
-                    clearInterval(measurementInterval);
-                    
-                    if (measurementData.length > 0) {
-                        const avgBaseline = measurementData.reduce((sum, data) => sum + data.baselineAmplitude, 0) / measurementData.length;
-                        const avgPeak = measurementData.reduce((sum, data) => sum + data.peakAmplitude, 0) / measurementData.length;
-                        const difference = avgPeak - avgBaseline;
-                        
-                        this.measurementCount++;
-                        const measurement = {
-                            count: this.measurementCount,
-                            timestamp: Date.now(),
-                            baseFreq,
-                            peakFreq,
-                            avgBaseline,
-                            avgPeak,
-                            difference,
-                            rpm
-                        };
-                        
-                        this.measurements.push(measurement);
-                        this.displayMeasurement(measurement);
-                        
-                        this.updateStatus(`측정 완료 (${this.measurementCount}회차). 다음 측정까지 대기 중...`, 'analyzing');
-                        
-                        // 다음 측정 예약
-                        if (this.isAnalyzing) {
-                            this.performMeasurement();
-                        }
-                    }
-                }, 20000); // 20초
-            }
-            
-            analyzeSingleFrame(baseFreq, peakFreq) {
-                const bufferLength = this.analyser.frequencyBinCount;
-                const dataArray = new Float32Array(bufferLength);
-                this.analyser.getFloatFrequencyData(dataArray);
-                
-                const sampleRate = this.audioContext.sampleRate;
-                const nyquist = sampleRate / 2;
-                
-                const getAmplitudeAtFreq = (frequency) => {
-                    const binIndex = Math.round((frequency / nyquist) * bufferLength);
-                    const startBin = Math.max(0, binIndex - 2);
-                    const endBin = Math.min(bufferLength - 1, binIndex + 2);
-                    
-                    let sum = 0;
-                    let count = 0;
-                    for (let i = startBin; i <= endBin; i++) {
-                        sum += Math.pow(10, dataArray[i] / 20); // dB를 선형으로 변환
-                        count++;
-                    }
-                    return count > 0 ? sum / count : 0;
-                };
-                
-                return {
-                    baselineAmplitude: getAmplitudeAtFreq(baseFreq),
-                    peakAmplitude: getAmplitudeAtFreq(peakFreq)
-                };
-            }
-            
-            displayMeasurement(measurement) {
-                const div = document.createElement('div');
-                div.className = 'measurement';
-                div.innerHTML = `
-                    <strong>측정 ${measurement.count}회차</strong> (${new Date(measurement.timestamp).toLocaleTimeString()})<br>
-                    RPM: ${measurement.rpm} | 기본주파수: ${measurement.baseFreq.toFixed(1)}Hz | 피크주파수: ${measurement.peakFreq.toFixed(1)}Hz<br>
-                    기본진폭: ${measurement.avgBaseline.toFixed(4)} | 피크진폭: ${measurement.avgPeak.toFixed(4)}<br>
-                    <strong>차이값: ${measurement.difference.toFixed(4)}</strong>
-                `;
-                this.measurementList.appendChild(div);
-                this.measurementList.scrollTop = this.measurementList.scrollHeight;
-            }
-            
-            stopAnalysis() {
-                this.isAnalyzing = false;
-                
-                if (this.intervalId) {
-                    clearInterval(this.intervalId);
-                }
-                
-                this.startBtn.disabled = false;
-                this.stopBtn.disabled = true;
-                this.connectBtn.disabled = false;
-                
-                const endTime = Date.now();
-                const totalDuration = (endTime - this.startTime) / 1000;
-                
-                if (this.measurements.length > 0) {
-                    const avgDifference = this.measurements.reduce((sum, m) => sum + m.difference, 0) / this.measurements.length
