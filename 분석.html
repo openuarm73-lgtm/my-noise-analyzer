@@ -1,123 +1,150 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="소리분석기">
+    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoi7IaM66as67aE7ISd6riwIiwic2hvcnRfbmFtZSI6IuyCrOumrOu2hCIsInN0YXJ0X3VybCI6Ii4vIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJ0aGVtZV9jb2xvciI6IiM2NjdlZWEiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzY2N2VlYSJ9">
     <title>소리 분석기 - RPM 기반</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        html {
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
         }
         
         body {
-            font-family: 'Arial', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+            padding: 10px;
             color: #333;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
         
         .container {
-            max-width: 500px;
+            max-width: 100%;
+            width: 100%;
             margin: 0 auto;
             background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            position: relative;
         }
         
         h1 {
             text-align: center;
             color: #4a5568;
-            margin-bottom: 30px;
-            font-size: 1.8em;
+            margin-bottom: 25px;
+            font-size: 1.5rem;
+            font-weight: 700;
         }
         
         .input-group {
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
         
         label {
             display: block;
             margin-bottom: 8px;
-            font-weight: bold;
+            font-weight: 600;
             color: #2d3748;
+            font-size: 1rem;
         }
         
         input[type="number"] {
             width: 100%;
-            padding: 12px;
+            padding: 14px 16px;
             border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+            -webkit-appearance: none;
+            appearance: none;
         }
         
         input[type="number"]:focus {
             outline: none;
             border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
         .button-group {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            margin-bottom: 25px;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
         }
         
         button {
-            padding: 15px;
+            padding: 16px 20px;
             border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            user-select: none;
+        }
+        
+        button:active {
+            transform: scale(0.98);
         }
         
         #connectBtn {
-            background: #48bb78;
+            background: linear-gradient(135deg, #48bb78, #38a169);
             color: white;
-        }
-        
-        #connectBtn:hover:not(:disabled) {
-            background: #38a169;
+            box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
         }
         
         #startBtn {
-            background: #4299e1;
+            background: linear-gradient(135deg, #4299e1, #3182ce);
             color: white;
-        }
-        
-        #startBtn:hover:not(:disabled) {
-            background: #3182ce;
+            box-shadow: 0 4px 15px rgba(66, 153, 225, 0.3);
         }
         
         #stopBtn {
-            background: #f56565;
+            background: linear-gradient(135deg, #f56565, #e53e3e);
             color: white;
-        }
-        
-        #stopBtn:hover:not(:disabled) {
-            background: #e53e3e;
+            box-shadow: 0 4px 15px rgba(245, 101, 101, 0.3);
         }
         
         button:disabled {
-            background: #cbd5e0 !important;
-            cursor: not-allowed;
+            background: #e2e8f0 !important;
+            color: #a0aec0 !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
+            transform: none !important;
         }
         
         .status {
             background: #f7fafc;
             border-left: 4px solid #4299e1;
-            padding: 15px;
+            padding: 16px;
             margin-bottom: 20px;
-            border-radius: 0 8px 8px 0;
-            min-height: 50px;
+            border-radius: 0 10px 10px 0;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            word-break: keep-all;
         }
         
         .status.error {
@@ -135,33 +162,45 @@
         .status.analyzing {
             background: #fefcbf;
             border-left-color: #d69e2e;
+            color: #744210;
             animation: pulse 2s infinite;
         }
         
         .results {
             background: #f0fff4;
             border: 2px solid #9ae6b4;
-            border-radius: 8px;
-            padding: 20px;
+            border-radius: 10px;
+            padding: 16px;
             margin-top: 20px;
             display: none;
         }
         
+        .results h3 {
+            color: #2f855a;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+        
         .measurement {
             background: white;
-            padding: 15px;
-            margin: 10px 0;
+            padding: 12px;
+            margin: 8px 0;
             border-radius: 8px;
             border-left: 4px solid #667eea;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
         .final-result {
             background: #fed7d7;
             border: 2px solid #fc8181;
             border-radius: 8px;
-            padding: 20px;
-            margin-top: 15px;
+            padding: 16px;
+            margin-top: 12px;
             text-align: center;
+            font-weight: 600;
+            color: #c53030;
         }
         
         @keyframes pulse {
@@ -173,24 +212,137 @@
             background: #ebf8ff;
             border: 1px solid #90cdf4;
             border-radius: 8px;
-            padding: 15px;
+            padding: 12px;
             margin-top: 15px;
-            font-size: 14px;
+            font-size: 0.85rem;
+            line-height: 1.4;
         }
         
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4299e1, #667eea);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        
+        .measurement-list {
+            max-height: 300px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .measurement-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .measurement-list::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 2px;
+        }
+        
+        /* 모바일 최적화 */
         @media (max-width: 480px) {
+            body {
+                padding: 5px;
+            }
+            
             .container {
-                padding: 20px;
-                margin: 10px;
+                padding: 15px;
+                border-radius: 8px;
             }
             
             h1 {
-                font-size: 1.5em;
+                font-size: 1.3rem;
+                margin-bottom: 20px;
             }
             
             button {
+                padding: 14px 18px;
+                font-size: 0.95rem;
+            }
+            
+            input[type="number"] {
+                padding: 12px 14px;
+                font-size: 1rem;
+            }
+            
+            .measurement {
+                font-size: 0.85rem;
+                padding: 10px;
+            }
+        }
+        
+        /* 가로 모드 */
+        @media (orientation: landscape) and (max-height: 500px) {
+            .container {
                 padding: 12px;
-                font-size: 14px;
+            }
+            
+            h1 {
+                font-size: 1.2rem;
+                margin-bottom: 15px;
+            }
+            
+            .button-group {
+                gap: 8px;
+            }
+            
+            button {
+                padding: 12px 16px;
+            }
+        }
+        
+        /* 터치 피드백 */
+        button:not(:disabled):active::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.2);
+            pointer-events: none;
+        }
+        
+        /* 다크모드 지원 */
+        @media (prefers-color-scheme: dark) {
+            .container {
+                background: #1a202c;
+                color: #e2e8f0;
+            }
+            
+            h1 {
+                color: #e2e8f0;
+            }
+            
+            label {
+                color: #cbd5e0;
+            }
+            
+            input[type="number"] {
+                background: #2d3748;
+                border-color: #4a5568;
+                color: #e2e8f0;
+            }
+            
+            input[type="number"]:focus {
+                background: #2d3748;
+                border-color: #667eea;
+            }
+            
+            .measurement {
+                background: #2d3748;
+                color: #e2e8f0;
             }
         }
     </style>
@@ -201,7 +353,7 @@
         
         <div class="input-group">
             <label for="rpmInput">RPM 값 입력:</label>
-            <input type="number" id="rpmInput" value="1800" min="300" max="10000" step="100">
+            <input type="number" id="rpmInput" value="1800" min="300" max="10000" step="100" inputmode="numeric">
         </div>
         
         <div class="button-group">
@@ -211,25 +363,30 @@
         </div>
         
         <div class="status" id="status">
-            시작하려면 마이크 연결을 클릭해주세요.
+            시작하려면 마이크 연결을 터치해주세요.
+        </div>
+        
+        <div class="progress-bar" id="progressContainer" style="display: none;">
+            <div class="progress-fill" id="progressBar"></div>
         </div>
         
         <div class="permission-help" id="helpText">
-            <strong>📋 사용 안내:</strong><br>
-            • HTTPS 환경에서만 작동합니다 (localhost는 가능)<br>
-            • 브라우저에서 마이크 권한 허용이 필요합니다<br>
-            • Chrome, Firefox, Safari 등 최신 브라우저 권장
+            <strong>📋 모바일 사용 안내:</strong><br>
+            • Chrome, Samsung Internet 등 최신 브라우저 사용<br>
+            • 마이크 권한 허용 필수<br>
+            • HTTPS 환경에서만 작동<br>
+            • 화면 회전 시 자동 조정
         </div>
         
         <div class="results" id="results">
             <h3>📈 측정 결과</h3>
-            <div id="measurementList"></div>
+            <div class="measurement-list" id="measurementList"></div>
             <div id="finalResult"></div>
         </div>
     </div>
 
     <script>
-        class AudioAnalyzer {
+        class MobileAudioAnalyzer {
             constructor() {
                 this.audioContext = null;
                 this.analyser = null;
@@ -241,10 +398,12 @@
                 this.startTime = null;
                 this.currentMeasurementTimeout = null;
                 this.measurementCount = 0;
+                this.currentProgress = 0;
                 
                 this.initializeElements();
                 this.bindEvents();
-                this.checkBrowserSupport();
+                this.checkMobileSupport();
+                this.setupVisibilityHandling();
             }
             
             initializeElements() {
@@ -257,137 +416,7 @@
                 this.measurementList = document.getElementById('measurementList');
                 this.finalResult = document.getElementById('finalResult');
                 this.helpText = document.getElementById('helpText');
+                this.progressContainer = document.getElementById('progressContainer');
+                this.progressBar = document.getElementById('progressBar');
             }
             
-            bindEvents() {
-                this.connectBtn.addEventListener('click', () => this.connectMicrophone());
-                this.startBtn.addEventListener('click', () => this.startAnalysis());
-                this.stopBtn.addEventListener('click', () => this.stopAnalysis());
-            }
-            
-            checkBrowserSupport() {
-                // HTTPS 체크
-                if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-                    this.updateStatus('⚠️ HTTPS 환경에서만 마이크를 사용할 수 있습니다.', 'error');
-                    this.connectBtn.disabled = true;
-                    return;
-                }
-                
-                // getUserMedia 지원 체크
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    this.updateStatus('❌ 이 브라우저는 마이크 접근을 지원하지 않습니다.', 'error');
-                    this.connectBtn.disabled = true;
-                    return;
-                }
-                
-                // Web Audio API 지원 체크
-                if (!window.AudioContext && !window.webkitAudioContext) {
-                    this.updateStatus('❌ 이 브라우저는 Web Audio API를 지원하지 않습니다.', 'error');
-                    this.connectBtn.disabled = true;
-                    return;
-                }
-            }
-            
-            async connectMicrophone() {
-                try {
-                    this.updateStatus('🔄 마이크 연결 중... 권한을 허용해주세요.', 'analyzing');
-                    this.connectBtn.disabled = true;
-                    
-                    // 기존 연결 정리
-                    if (this.mediaStream) {
-                        this.mediaStream.getTracks().forEach(track => track.stop());
-                    }
-                    if (this.audioContext && this.audioContext.state !== 'closed') {
-                        await this.audioContext.close();
-                    }
-                    
-                    // 새 오디오 컨텍스트 생성
-                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-                    this.audioContext = new AudioContextClass();
-                    
-                    // 마이크 권한 요청 및 스트림 획득
-                    this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            echoCancellation: false,
-                            noiseSuppression: false,
-                            autoGainControl: false,
-                            sampleRate: 44100
-                        }
-                    });
-                    
-                    // 오디오 분석기 설정
-                    this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
-                    this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 8192; // 더 높은 주파수 해상도
-                    this.analyser.smoothingTimeConstant = 0.3;
-                    this.analyser.minDecibels = -100;
-                    this.analyser.maxDecibels = -30;
-                    
-                    this.source.connect(this.analyser);
-                    
-                    // 연결 성공
-                    this.isConnected = true;
-                    this.connectBtn.textContent = '✅ 연결완료';
-                    this.startBtn.disabled = false;
-                    this.helpText.style.display = 'none';
-                    
-                    this.updateStatus('✅ 마이크가 성공적으로 연결되었습니다!', 'success');
-                    
-                    // 오디오 컨텍스트 재개 (일부 브라우저에서 필요)
-                    if (this.audioContext.state === 'suspended') {
-                        await this.audioContext.resume();
-                    }
-                    
-                } catch (error) {
-                    console.error('마이크 연결 실패:', error);
-                    this.connectBtn.disabled = false;
-                    
-                    let errorMessage = '❌ 마이크 연결에 실패했습니다. ';
-                    
-                    if (error.name === 'NotAllowedError') {
-                        errorMessage += '마이크 권한을 허용해주세요.';
-                    } else if (error.name === 'NotFoundError') {
-                        errorMessage += '마이크 장치를 찾을 수 없습니다.';
-                    } else if (error.name === 'NotReadableError') {
-                        errorMessage += '마이크가 다른 앱에서 사용 중입니다.';
-                    } else {
-                        errorMessage += `오류: ${error.message}`;
-                    }
-                    
-                    this.updateStatus(errorMessage, 'error');
-                }
-            }
-            
-            startAnalysis() {
-                if (!this.isConnected || !this.analyser) {
-                    this.updateStatus('먼저 마이크를 연결해주세요.', 'error');
-                    return;
-                }
-                
-                this.isAnalyzing = true;
-                this.measurements = [];
-                this.measurementCount = 0;
-                this.startTime = Date.now();
-                
-                this.startBtn.disabled = true;
-                this.stopBtn.disabled = false;
-                this.connectBtn.disabled = true;
-                
-                this.results.style.display = 'block';
-                this.measurementList.innerHTML = '';
-                this.finalResult.innerHTML = '';
-                
-                this.updateStatus('🔍 분석을 시작합니다... (20초간 측정)', 'analyzing');
-                
-                this.performMeasurement();
-            }
-            
-            performMeasurement() {
-                if (!this.isAnalyzing) return;
-                
-                const rpm = parseInt(this.rpmInput.value);
-                const baseFreq = rpm / 3;
-                const peakFreq = baseFreq * 7;
-                
-                // 20초 동안 100ms마다 샘플링
-                
