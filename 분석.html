@@ -268,6 +268,7 @@
                 }
 
                 if (isValid) {
+                    // 마이크가 연결된 상태(this.audioContext가 null이 아님)일 때만 startButton 활성화
                     if (this.audioContext) {
                         this.startButton.disabled = false;
                         this.updateStatus('마이크 연결 성공. 분석을 시작할 수 있습니다.', 'success');
@@ -308,6 +309,7 @@
                     source.connect(this.analyser);
                     
                     this.connectBtn.disabled = true;
+                    // 마이크 연결 성공 후 입력값 유효성 검사 및 버튼 상태 업데이트
                     this.validateInputs(); 
                 } catch (err) {
                     this.updateStatus(`마이크 연결 실패: ${err.message}`, 'error');
@@ -342,9 +344,9 @@
                     this.audioContext = null;
                 }
 
-                this.startButton.disabled = false;
+                this.startButton.disabled = true; // 중지 후 다시 마이크 연결 필요
                 this.stopButton.disabled = true;
-                this.connectBtn.disabled = false;
+                this.connectBtn.disabled = false; // 마이크 연결 버튼 다시 활성화
                 this.updateStatus("분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.", 'error');
             }
 
