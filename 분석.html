@@ -377,7 +377,7 @@
         </div>
         
         <div class="results" id="results">
-            <h3>📈 측정 결과</h3>
+            <h3>📈 측정 결과 (10초 간격)</h3>
             <div class="measurement-list" id="measurementList"></div>
             <div id="finalResult"></div>
         </div>
@@ -393,15 +393,18 @@
                 this.mediaStream = null;
                 this.isConnected = false;
                 this.isAnalyzing = false;
-                this.allMeasurements = []; // 전체 측정을 저장하는 배열
-                this.currentIntervalMeasurements = []; // 현재 20초 간격 측정을 저장하는 배열
-                this.intervalCount = 0; // 20초 측정 횟수 (총 3회)
-                this.startTime = null;
-                this.measurementInterval = null; // setInterval ID
-                this.ANALYSIS_INTERVAL_MS = 500; // 측정 간격 0.5초
-                this.INTERVAL_DURATION_SEC = 20; // 20초 간격
-                this.TOTAL_INTERVALS = 3; // 총 3회 측정 (총 60초)
-
+                
+                // 측정 로직 변수
+                this.allSnapshotDifferences = []; // 누적된 모든 0.5초 스냅샷 진폭 차이 (전체 평균용)
+                this.current10sDifferences = []; // 현재 10초 측정 기간 동안의 진폭 차이 스냅샷
+                this.measurementInterval = null; // setInterval ID (0.5초마다 실행)
+                this.snapShotCount = 0; // 0.5초 스냅샷 횟수
+                this.intervalCount = 0; // 10초 측정 완료 횟수
+                
+                this.SNAPSHOT_INTERVAL_MS = 500; // 진폭 측정 간격 0.5초
+                this.MEASUREMENT_DURATION_SEC = 10; // 하나의 측정 데이터 획득 시간 10초
+                this.TOTAL_MEASUREMENTS = 3; // 총 3회 측정 (0~10초, 10~20초, 20~30초)
+                
                 this.initializeElements();
                 this.bindEvents();
                 this.checkMobileSupport();
@@ -425,10 +428,10 @@
             bindEvents() {
                 this.connectBtn.addEventListener('click', () => this.connectMicrophone());
                 this.startBtn.addEventListener('click', () => this.startAnalysis());
-                this.stopBtn.addEventListener('click', () => this.stopAnalysis());
+                this.stopBtn.addEventListener('click', () => this.stopAnalysis('manual')); // 수동 중지
                 this.rpmInput.addEventListener('input', () => this.validateRPM());
             }
-
+            
             checkMobileSupport() {
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     this.updateStatus('이 브라우저는 마이크 접근을 지원하지 않습니다.', 'error');
@@ -439,14 +442,13 @@
             setupVisibilityHandling() {
                 document.addEventListener('visibilitychange', () => {
                     if (document.hidden && this.isAnalyzing) {
-                        this.stopAnalysis(true); // 페이지 숨김 시 강제 중지
+                        this.stopAnalysis('forced'); 
                     }
                 });
             }
 
             async connectMicrophone() {
                 try {
-                    // AudioContext 초기화 (WebView에서 필요할 경우 resume)
                     this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     if (this.audioContext.state === 'suspended') {
                          await this.audioContext.resume();
@@ -454,7 +456,7 @@
                     
                     this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 2048; // 주파수 해상도 설정
+                    this.analyser.fftSize = 2048; 
                     this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
                     this.source.connect(this.analyser);
                     
@@ -477,21 +479,25 @@
                     if (this.isConnected) this.startBtn.disabled = false;
                 }
             }
-
-            startAnalysis() {
-                if (!this.isConnected) {
-                    this.updateStatus('먼저 마이크를 연결해주세요.', 'error');
-                    return;
-                }
+            
+            validateRPMValue() {
                 const rpm = parseInt(this.rpmInput.value);
                 if (isNaN(rpm) || rpm < 300 || rpm > 10000) {
                      this.updateStatus('유효한 RPM 값을 입력해주세요.', 'error');
-                     return;
+                     return false;
+                }
+                return true;
+            }
+
+            startAnalysis() {
+                if (!this.isConnected || !this.validateRPMValue()) {
+                    return;
                 }
                 
                 this.isAnalyzing = true;
-                this.allMeasurements = [];
-                this.currentIntervalMeasurements = [];
+                this.allSnapshotDifferences = [];
+                this.current10sDifferences = [];
+                this.snapShotCount = 0;
                 this.intervalCount = 0;
                 this.startTime = performance.now();
                 this.measurementList.innerHTML = '';
@@ -500,129 +506,149 @@
                 this.results.style.display = 'block';
                 this.startBtn.disabled = true;
                 this.stopBtn.disabled = false;
+                
+                const rpm = parseInt(this.rpmInput.value);
                 this.updateStatus(`소리 분석 중... (목표 RPM: ${rpm})`, 'analyzing');
 
-                // 0.5초 간격으로 측정 시작
-                this.measurementInterval = setInterval(() => this.analyzeAudioStep(), this.ANALYSIS_INTERVAL_MS);
+                this.measurementInterval = setInterval(() => this.analyzeAudioStep(), this.SNAPSHOT_INTERVAL_MS);
             }
 
             analyzeAudioStep() {
                 if (!this.isAnalyzing) return;
 
-                const bufferLength = this.analyser.frequencyBinCount;
-                const dataArray = new Float32Array(bufferLength);
+                const dataArray = new Float32Array(this.analyser.frequencyBinCount);
                 this.analyser.getFloatFrequencyData(dataArray);
 
                 const rpm = parseInt(this.rpmInput.value);
                 const sampleRate = this.audioContext.sampleRate;
                 const binWidth = sampleRate / this.analyser.fftSize;
-
-                // 최대 주파수 성분 찾기 (가장 큰 진폭)
-                let maxAmplitude = -Infinity;
-                let maxBin = 0;
-                for (let i = 0; i < bufferLength; i++) {
-                    if (dataArray[i] > maxAmplitude) {
-                        maxAmplitude = dataArray[i];
-                        maxBin = i;
-                    }
-                }
-
-                const detectedHz = maxBin * binWidth;
-                const detectedRPM = detectedHz * 60;
-                const tolerance = 0.1; // 10% tolerance
-                const isValid = Math.abs(detectedRPM - rpm) <= rpm * tolerance;
-                const currentTime = ((performance.now() - this.startTime) / 1000);
-
-                const measurement = {
-                    time: currentTime.toFixed(1),
-                    detectedRPM,
-                    isValid
-                };
+                const snapshotsPerDuration = this.MEASUREMENT_DURATION_SEC * 1000 / this.SNAPSHOT_INTERVAL_MS; // 10초당 20개 스냅샷
                 
-                this.allMeasurements.push(measurement);
-                this.currentIntervalMeasurements.push(measurement);
+                // 1. 주파수 및 진폭 획득
+                // 기본 주파수: (RPM / 60) / 20
+                const fundamentalHz = (rpm / 60) / 20;
+                const fundamentalBin = Math.round(fundamentalHz / binWidth);
+                const fundamentalAmplitude = dataArray[fundamentalBin] || -100; // dB
+
+                // 피크 주파수: 기본 주파수 * 7
+                const peakHz = fundamentalHz * 7;
+                const peakBin = Math.round(peakHz / binWidth);
+                const peakAmplitude = dataArray[peakBin] || -100; // dB
                 
+                // 2. 진폭 차이 (dB) 계산 및 데이터 기록
+                const amplitudeDifference = peakAmplitude - fundamentalAmplitude;
+                
+                this.snapShotCount++;
+                const currentTime = this.snapShotCount * this.SNAPSHOT_INTERVAL_MS / 1000;
+                
+                this.current10sDifferences.push(amplitudeDifference);
+                this.allSnapshotDifferences.push(amplitudeDifference); // 전체 평균을 위해 모든 스냅샷 기록
+
+                this.updateStatus(`소리 분석 중... (현재 시간: ${currentTime.toFixed(1)}s)`, 'analyzing');
                 this.updateProgress(currentTime);
 
-                // 20초 간격으로 중간 결과 표시
-                if (currentTime >= (this.intervalCount + 1) * this.INTERVAL_DURATION_SEC) {
-                    this.intervalCount++;
-                    this.displayIntervalResult(this.intervalCount);
-                    this.currentIntervalMeasurements = []; // 다음 간격을 위해 초기화
+                // 3. 10초 측정 완료 시 중간 결과 표시
+                if (this.snapShotCount % snapshotsPerDuration === 0) { // 10초, 20초, 30초 시점
+                     this.intervalCount++;
+                     const endTime = this.intervalCount * this.MEASUREMENT_DURATION_SEC;
+                     this.displayIntervalResult(this.intervalCount, endTime);
 
-                    // 총 3회 측정 완료 시 자동 종료
-                    if (this.intervalCount >= this.TOTAL_INTERVALS) {
-                        this.stopAnalysis();
-                    }
+                     this.current10sDifferences = []; // 다음 측정 간격을 위해 초기화
+                     
+                     // 총 측정 횟수 완료 시 자동 종료 (30초 완료)
+                     if (this.intervalCount >= this.TOTAL_MEASUREMENTS) {
+                         this.stopAnalysis('auto'); 
+                     }
                 }
             }
 
-            stopAnalysis(isForced = false) {
-                if (!this.isAnalyzing && !isForced) return; // 이미 중지된 경우 무시
+            stopAnalysis(reason) {
+                if (!this.isAnalyzing && reason !== 'manual') return;
                 
                 this.isAnalyzing = false;
-                clearInterval(this.measurementInterval); // 측정 인터벌 중지
-                
-                // 마이크 스트림 해제 (필요하다면)
-                // this.mediaStream.getTracks().forEach(track => track.stop());
+                clearInterval(this.measurementInterval);
 
                 this.progressContainer.style.display = 'none';
                 this.stopBtn.disabled = true;
                 this.startBtn.disabled = false;
                 
-                if (isForced) {
+                if (reason === 'forced') {
                      this.updateStatus('분석이 강제 중지되었습니다. (페이지 이동/숨김 등)', 'error');
                      return;
                 }
 
-                // 마지막 20초 간격이 완전히 채워지지 않은 경우, 남은 데이터를 처리할지 여부는 사용자 정책에 따라 달라짐
-                // 여기서는 3회 측정이 완료된 것으로 간주하고 최종 결과만 표시
-
-                this.updateStatus('분석이 완료되었습니다. 최종 결과를 확인하세요.', 'success');
-                this.displayResults();
+                const endTime = ((performance.now() - this.startTime) / 1000).toFixed(1);
+                
+                if (reason === 'manual') {
+                    this.updateStatus(`분석이 수동 중지되었습니다. (측정 시간: 0s ~ ${endTime}s)`, 'success');
+                } else {
+                    this.updateStatus('총 30초 분석이 완료되었습니다. 최종 결과를 확인하세요.', 'success');
+                }
+                
+                this.displayResults(reason, endTime); 
             }
-
+            
             updateStatus(message, type) {
                 this.status.textContent = message;
                 this.status.className = `status ${type}`;
             }
 
             updateProgress(currentTime) {
-                const totalDuration = this.TOTAL_INTERVALS * this.INTERVAL_DURATION_SEC;
+                // 총 분석 시간은 30초
+                const totalDuration = this.TOTAL_MEASUREMENTS * this.MEASUREMENT_DURATION_SEC;
                 this.currentProgress = (currentTime / totalDuration) * 100;
                 if (this.currentProgress > 100) this.currentProgress = 100;
                 this.progressBar.style.width = `${this.currentProgress}%`;
             }
 
-            // 20초 간격 결과 표시
-            displayIntervalResult(count) {
-                const totalRPM = this.currentIntervalMeasurements.reduce((sum, m) => sum + m.detectedRPM, 0);
-                const averageRPM = this.currentIntervalMeasurements.length > 0 ? totalRPM / this.currentIntervalMeasurements.length : 0;
-                const inputRPM = parseInt(this.rpmInput.value);
-                const isNormal = Math.abs(averageRPM - inputRPM) <= inputRPM * 0.1; // 10% tolerance
+            // 10초 간격 결과 표시
+            displayIntervalResult(count, endTime) {
+                // 이전에 누적된 10초간의 스냅샷 20개를 사용
+                const dataForAverage = this.allSnapshotDifferences.slice(-20);
+                
+                const totalDiff = dataForAverage.reduce((sum, diff) => sum + diff, 0);
+                const averageDiff = dataForAverage.length > 0 ? totalDiff / dataForAverage.length : 0;
+                
+                const duration = this.MEASUREMENT_DURATION_SEC;
+                const startTime = endTime - duration;
+                
+                // 임의의 기준 (예시): 진폭 차이 평균이 10dB 미만이면 '참고'
+                const isNormal = Math.abs(averageDiff) < 10; 
                 
                 const div = document.createElement('div');
                 div.className = `measurement ${isNormal ? 'success' : 'error'}`;
                 div.style.borderLeftColor = isNormal ? '#48bb78' : '#e53e3e';
                 div.innerHTML = `
-                    <strong>[${count}차 측정: ${(count - 1) * this.INTERVAL_DURATION_SEC}s ~ ${count * this.INTERVAL_DURATION_SEC}s]</strong><br>
-                    평균 검출 RPM: ${averageRPM.toFixed(2)} | 상태: ${isNormal ? '🟢 정상' : '🔴 비정상'}
+                    <strong>[${count}차 측정: ${startTime.toFixed(0)}s ~ ${endTime.toFixed(0)}s]</strong><br>
+                    평균 진폭 차이 (dB): ${averageDiff.toFixed(2)} | 상태: ${isNormal ? '🟢 참고' : '🔴 참고'}
                 `;
                 this.measurementList.prepend(div);
             }
 
-            // 최종 결과 표시
-            displayResults() {
-                const totalRPM = this.allMeasurements.reduce((sum, m) => sum + m.detectedRPM, 0);
-                const averageRPM = this.allMeasurements.length > 0 ? totalRPM / this.allMeasurements.length : 0;
-                const inputRPM = parseInt(this.rpmInput.value);
-                const isNormal = Math.abs(averageRPM - inputRPM) <= inputRPM * 0.1; // 10% tolerance
+            // 최종 결과 표시 (0초부터 누른 시간까지의 전체 평균)
+            displayResults(reason, endTime) {
+                const dataToAverage = this.allSnapshotDifferences;
+
+                if (dataToAverage.length === 0) {
+                    this.finalResult.textContent = '측정된 데이터가 없어 최종 평균을 계산할 수 없습니다.';
+                    this.finalResult.className = 'final-result';
+                    return;
+                }
                 
-                this.finalResult.textContent = `최종 평균 RPM: ${averageRPM.toFixed(2)} | 상태: ${isNormal ? '✨ 정상' : '⚠️ 비정상'}`;
-                this.finalResult.className = `final-result ${isNormal ? 'success' : ''}`;
+                const totalAverageDiff = dataToAverage.reduce((sum, diff) => sum + diff, 0) / dataToAverage.length;
+                const finalStatusNormal = Math.abs(totalAverageDiff) < 10;
+                
+                let resultMessage;
+                if (reason === 'manual') {
+                     resultMessage = `수동 중지 (0s ~ ${endTime}s) 전체 평균 진폭 차이 (dB): ${totalAverageDiff.toFixed(2)}`;
+                } else {
+                     resultMessage = `전체 분석 (0s ~ 30s) 최종 평균 진폭 차이 (dB): ${totalAverageDiff.toFixed(2)}`;
+                }
+
+                this.finalResult.textContent = `${resultMessage} | 최종 상태: ${finalStatusNormal ? '✨ 정상으로 추정' : '⚠️ 비정상으로 추정'}`;
+                this.finalResult.className = `final-result ${finalStatusNormal ? 'success' : ''}`;
             }
 
-            // 마이크 연결 해제 및 초기화
             disconnect() {
                 if (this.mediaStream) {
                     this.mediaStream.getTracks().forEach(track => track.stop());
