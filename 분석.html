@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="소리분석기">
-    <title>소리 분석기 - RPM 기반</title>
+    <title>소리 분석기 - RPM 기반 (지속 측정)</title>
     <style>
         /* CSS Styles: 모바일 및 웹뷰 환경에 최적화된 디자인 */
         * {
@@ -144,8 +144,9 @@
             color: #2d3748;
         }
 
+        /* 임계값이 없어졌으므로 색상 구분은 임의의 기준으로 유지 */
         .db-diff-high {
-            color: #e53e3e;
+            color: #e53e3e; 
             font-weight: bold;
         }
         .db-diff-low {
@@ -165,7 +166,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎵 소리 분석기 (임계값: -5 dB)</h1>
+        <h1>🎵 소리 분석기 (지속 측정 모드)</h1>
         
         <div class="input-group">
             <label for="rpmInput">RPM 값 입력:</label>
@@ -183,8 +184,8 @@
         </div>
         
         <div class="permission-help">
-            **⚠️ 현재 자동 중지 임계값: -5 dB.**<br>
-            피크 주파수와 기본 주파수의 차이가 -5 dB보다 커지면 분석이 자동으로 중지됩니다.
+            **✅ 현재 모드: 지속 측정 모드.**<br>
+            자동 중지 임계값이 제거되었으며, '분석 중지'를 누를 때까지 실시간으로 측정됩니다.
         </div>
         
         <div class="results">
@@ -212,8 +213,7 @@
                 this.stream = null;
                 this.isRunning = false;
                 
-                // 🛑 임계값 상수 정의 (-5 dB 유지)
-                this.STOP_THRESHOLD_DB = -5; 
+                // 🛑 임계값 상수를 제거했습니다.
 
                 // 이벤트 리스너 설정
                 this.connectBtn.addEventListener('click', () => this.connectMicrophone());
@@ -281,14 +281,12 @@
                 this.isRunning = true;
                 this.startButton.disabled = true;
                 this.stopButton.disabled = false;
-                this.updateStatus(`분석 중... (목표 RPM: ${rpm}, 임계값: ${this.STOP_THRESHOLD_DB} dB)`, 'analyzing');
+                this.updateStatus(`분석 중... (목표 RPM: ${rpm})`, 'analyzing');
 
-                // requestAnimationFrame을 사용하여 부드러운 분석 루프 시작
                 requestAnimationFrame(() => this.analyzeAudioStep());
             }
 
             stopAnalysis() {
-                // ... (생략: 중지 로직은 이전과 동일)
                 if (!this.isRunning) return;
 
                 this.isRunning = false;
@@ -298,7 +296,6 @@
                 }
                 
                 if (this.audioContext) {
-                    // AudioContext를 완전히 닫아 메모리 및 리소스 해제
                     this.audioContext.close().catch(e => console.error("AudioContext close error:", e));
                     this.audioContext = null;
                 }
@@ -329,10 +326,9 @@
                 return count > 0 ? sumAmplitude / count : -100;
             }
 
-            // 🔔 핵심 분석 로직 (출력 오류 수정 및 임계값 -5 dB 적용)
+            // 🔔 핵심 분석 로직 (임계값 제거)
             analyzeAudioStep() {
                 if (!this.isRunning || !this.analyser) {
-                    // 분석이 중지되었거나 분석기가 초기화되지 않았으면 종료
                     return;
                 }
 
@@ -347,15 +343,15 @@
                 const fundamentalHz = (rpm / 60) / 20; 
                 const peakHz = fundamentalHz * 7;      
 
-                // 2. 개선된 진폭 획득 (주변 2 Bin 포함)
+                // 2. 개선된 진폭 획득
                 const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, dataArray, 2);
                 const peakAmplitude = this.getAmplitudeInRange(peakHz, binWidth, dataArray, 2);
 
                 // 3. 진폭 차이 (dB) 계산
                 const amplitudeDifference = peakAmplitude - fundamentalAmplitude;
                 
-                // 4. 결과 출력 포맷 설정 및 갱신 (빈 값 출력 오류 방지)
-                const diffClass = amplitudeDifference > this.STOP_THRESHOLD_DB ? 'db-diff-high' : 'db-diff-low';
+                // 4. 결과 출력 포맷 설정 (임의의 색상 기준 적용: 0 dB 이상이면 빨간색)
+                const diffClass = amplitudeDifference > 0 ? 'db-diff-high' : 'db-diff-low';
 
                 this.resultElement.innerHTML = `
                     <h3>✅ 실시간 dB 측정값</h3>
@@ -368,13 +364,7 @@
                     </p>
                 `;
 
-                // 5. 🛑 정지 조건: dB 차이가 -5보다 클 경우 자동 중지
-                if (amplitudeDifference > this.STOP_THRESHOLD_DB) { 
-                    this.stopAnalysis();
-                    this.statusElement.innerHTML = `<p style='color: red; font-weight: bold;'>🚨 임계값 (${this.STOP_THRESHOLD_DB} dB) 초과! 분석 자동 중단.</p>`;
-                    this.resultElement.innerHTML += `<p style='color: red;'> **경고: 피크 주파수 성분이 기본 주파수 성분과의 차이가 ${this.STOP_THRESHOLD_DB} dB를 초과했습니다!**</p>`;
-                    return;
-                }
+                // 5. 🛑 임계값 비교 및 자동 중지 로직을 완전히 제거했습니다.
 
                 // 6. 다음 분석 예약
                 requestAnimationFrame(() => this.analyzeAudioStep());
