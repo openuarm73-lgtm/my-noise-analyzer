@@ -1,583 +1,254 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#667eea">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="소리분석기">
-    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoi7IaM66as67aE7ISd6riwIiwic2hvcnRfbmFtZSI6IuyCrOumrOu2hCIsInN0YXJ0X3VybCI6Ii4vIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJ0aGVtZV9jb2xvciI6IiM2NjdlZWEiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzY2N2VlYSJ9">
-    <title>소리 분석기 - RPM 기반</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-        
-        html {
-            font-size: 16px;
-            -webkit-text-size-adjust: 100%;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 10px;
-            color: #333;
-            overflow-x: hidden;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        
-        .container {
-            max-width: 100%;
-            width: 100%;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-            position: relative;
-        }
-        
-        h1 {
-            text-align: center;
-            color: #4a5568;
-            margin-bottom: 25px;
-            font-size: 1.5rem;
-            font-weight: 700;
-        }
-        
-        .input-group {
-            margin-bottom: 20px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #2d3748;
-            font-size: 1rem;
-        }
-        
-        input[type="number"] {
-            width: 100%;
-            padding: 14px 16px;
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            font-size: 1.1rem;
-            transition: all 0.3s ease;
-            background: #f8fafc;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        
-        input[type="number"]:focus {
-            outline: none;
-            border-color: #667eea;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-        
-        .button-group {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        
-        button {
-            padding: 16px 20px;
-            border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            touch-action: manipulation;
-            -webkit-touch-callout: none;
-            user-select: none;
-        }
-        
-        button:active {
-            transform: scale(0.98);
-        }
-        
-        #connectBtn {
-            background: linear-gradient(135deg, #48bb78, #38a169);
-            color: white;
-            box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
-        }
-        
-        #startBtn {
-            background: linear-gradient(135deg, #4299e1, #3182ce);
-            color: white;
-            box-shadow: 0 4px 15px rgba(66, 153, 225, 0.3);
-        }
-        
-        #stopBtn {
-            background: linear-gradient(135deg, #f56565, #e53e3e);
-            color: white;
-            box-shadow: 0 4px 15px rgba(245, 101, 101, 0.3);
-        }
-        
-        button:disabled {
-            background: #e2e8f0 !important;
-            color: #a0aec0 !important;
-            cursor: not-allowed !important;
-            box-shadow: none !important;
-            transform: none !important;
-        }
-        
-        .status {
-            background: #f7fafc;
-            border-left: 4px solid #4299e1;
-            padding: 16px;
-            margin-bottom: 20px;
-            border-radius: 0 10px 10px 0;
-            font-size: 0.95rem;
-            line-height: 1.5;
-            word-break: keep-all;
-        }
-        
-        .status.error {
-            background: #fed7d7;
-            border-left-color: #f56565;
-            color: #c53030;
-        }
-        
-        .status.success {
-            background: #f0fff4;
-            border-left-color: #48bb78;
-            color: #2f855a;
-        }
-        
-        .status.analyzing {
-            background: #fefcbf;
-            border-left-color: #d69e2e;
-            color: #744210;
-            animation: pulse 2s infinite;
-        }
-        
-        .results {
-            background: #f0fff4;
-            border: 2px solid #9ae6b4;
-            border-radius: 10px;
-            padding: 16px;
-            margin-top: 20px;
-            display: none;
-        }
-        
-        .results h3 {
-            color: #2f855a;
-            margin-bottom: 15px;
-            font-size: 1.1rem;
-        }
-        
-        .measurement {
-            background: white;
-            padding: 12px;
-            margin: 8px 0;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-            font-size: 0.9rem;
-            line-height: 1.4;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        
-        .final-result {
-            background: #fed7d7;
-            border: 2px solid #fc8181;
-            border-radius: 8px;
-            padding: 16px;
-            margin-top: 12px;
-            text-align: center;
-            font-weight: 600;
-            color: #c53030;
-        }
-        
-        .final-result.success {
-            background: #f0fff4;
-            border: 2px solid #9ae6b4;
-            color: #2f855a;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        
-        .permission-help {
-            background: #ebf8ff;
-            border: 1px solid #90cdf4;
-            border-radius: 8px;
-            padding: 12px;
-            margin-top: 15px;
-            font-size: 0.85rem;
-            line-height: 1.4;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: #e2e8f0;
-            border-radius: 3px;
-            overflow: hidden;
-            margin: 10px 0;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #4299e1, #667eea);
-            border-radius: 3px;
-            transition: width 0.3s ease;
-            width: 0%;
-        }
-        
-        .measurement-list {
-            max-height: 300px;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        
-        .measurement-list::-webkit-scrollbar {
-            width: 4px;
-        }
-        
-        .measurement-list::-webkit-scrollbar-thumb {
-            background: #cbd5e0;
-            border-radius: 2px;
-        }
-        
-        @media (max-width: 480px) {
-            body {
-                padding: 5px;
-            }
-            .container {
-                padding: 15px;
-                border-radius: 8px;
-            }
-            h1 {
-                font-size: 1.3rem;
-                margin-bottom: 20px;
-            }
-            button {
-                padding: 14px 18px;
-                font-size: 0.95rem;
-            }
-            input[type="number"] {
-                padding: 12px 14px;
-                font-size: 1rem;
-            }
-            .measurement {
-                font-size: 0.85rem;
-                padding: 10px;
-            }
-        }
-        
-        @media (orientation: landscape) and (max-height: 500px) {
-            .container {
-                padding: 12px;
-            }
-            h1 {
-                font-size: 1.2rem;
-                margin-bottom: 15px;
-            }
-            .button-group {
-                gap: 8px;
-            }
-            button {
-                padding: 12px 16px;
-            }
-        }
-        
-        button:not(:disabled):active::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(255,255,255,0.2);
-            pointer-events: none;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            .container {
-                background: #1a202c;
-                color: #e2e8f0;
-            }
-            h1 {
-                color: #e2e8f0;
-            }
-            label {
-                color: #cbd5e0;
-            }
-            input[type="number"] {
-                background: #2d3748;
-                border-color: #4a5568;
-                color: #e2e8f0;
-            }
-            input[type="number"]:focus {
-                background: #2d3748;
-                border-color: #667eea;
-            }
-            .measurement {
-                background: #2d3748;
-                color: #e2e8f0;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🎵 소리 분석기</h1>
-        
-        <div class="input-group">
-            <label for="rpmInput">RPM 값 입력:</label>
-            <input type="number" id="rpmInput" value="1800" min="300" max="10000" step="100" inputmode="numeric">
-        </div>
-        
-        <div class="button-group">
-            <button id="connectBtn">🎤 마이크 연결</button>
-            <button id="startBtn" disabled>📊 분석 시작</button>
-            <button id="stopBtn" disabled>⏹️ 분석 중지</button>
-        </div>
-        
-        <div class="status" id="status">
-            시작하려면 마이크 연결을 터치해주세요.
-        </div>
-        
-        <div class="progress-bar" id="progressContainer" style="display: none;">
-            <div class="progress-fill" id="progressBar"></div>
-        </div>
-        
-        <div class="permission-help" id="helpText">
-            <strong>📋 모바일 사용 안내:</strong><br>
-            • Chrome, Samsung Internet 등 최신 브라우저 사용<br>
-            • 마이크 권한 허용 필수<br>
-            • HTTPS 환경에서만 작동<br>
-            • 화면 회전 시 자동 조정
-        </div>
-        
-        <div class="results" id="results">
-            <h3>📈 측정 결과</h3>
-            <div class="measurement-list" id="measurementList"></div>
-            <div id="finalResult"></div>
-        </div>
-    </div>
+class MobileAudioAnalyzer {
+    constructor() {
+        this.audioContext = null;
+        this.analyser = null;
+        this.source = null;
+        this.mediaStream = null;
+        this.isConnected = false;
+        this.isAnalyzing = false;
+        this.allMeasurements = []; // 전체 측정을 저장하는 배열
+        this.currentIntervalMeasurements = []; // 현재 20초 간격 측정을 저장하는 배열
+        this.intervalCount = 0; // 20초 측정 횟수 (총 3회)
+        this.startTime = null;
+        this.measurementInterval = null; // setInterval ID
+        this.ANALYSIS_INTERVAL_MS = 500; // 측정 간격 0.5초
+        this.INTERVAL_DURATION_SEC = 20; // 20초 간격
+        this.TOTAL_INTERVALS = 3; // 총 3회 측정
 
-    <script>
-        class MobileAudioAnalyzer {
-            constructor() {
-                this.audioContext = null;
-                this.analyser = null;
-                this.source = null;
-                this.mediaStream = null;
-                this.isConnected = false;
-                this.isAnalyzing = false;
-                this.measurements = [];
-                this.startTime = null;
-                this.currentMeasurementTimeout = null;
-                this.measurementCount = 0;
-                this.currentProgress = 0;
+        this.initializeElements();
+        this.bindEvents();
+        this.checkMobileSupport();
+        this.setupVisibilityHandling();
+    }
 
-                this.initializeElements();
-                this.bindEvents();
-                this.checkMobileSupport();
-                this.setupVisibilityHandling();
+    initializeElements() {
+        this.rpmInput = document.getElementById('rpmInput');
+        this.connectBtn = document.getElementById('connectBtn');
+        this.startBtn = document.getElementById('startBtn');
+        this.stopBtn = document.getElementById('stopBtn');
+        this.status = document.getElementById('status');
+        this.results = document.getElementById('results');
+        this.measurementList = document.getElementById('measurementList');
+        this.finalResult = document.getElementById('finalResult');
+        this.helpText = document.getElementById('helpText');
+        this.progressContainer = document.getElementById('progressContainer');
+        this.progressBar = document.getElementById('progressBar');
+    }
+
+    bindEvents() {
+        this.connectBtn.addEventListener('click', () => this.connectMicrophone());
+        this.startBtn.addEventListener('click', () => this.startAnalysis());
+        this.stopBtn.addEventListener('click', () => this.stopAnalysis());
+        this.rpmInput.addEventListener('input', () => this.validateRPM());
+    }
+
+    checkMobileSupport() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            this.updateStatus('이 브라우저는 마이크 접근을 지원하지 않습니다.', 'error');
+            this.connectBtn.disabled = true;
+        }
+    }
+
+    setupVisibilityHandling() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && this.isAnalyzing) {
+                this.stopAnalysis(true); // 페이지 숨김 시 강제 중지
             }
+        });
+    }
 
-            initializeElements() {
-                this.rpmInput = document.getElementById('rpmInput');
-                this.connectBtn = document.getElementById('connectBtn');
-                this.startBtn = document.getElementById('startBtn');
-                this.stopBtn = document.getElementById('stopBtn');
-                this.status = document.getElementById('status');
-                this.results = document.getElementById('results');
-                this.measurementList = document.getElementById('measurementList');
-                this.finalResult = document.getElementById('finalResult');
-                this.helpText = document.getElementById('helpText');
-                this.progressContainer = document.getElementById('progressContainer');
-                this.progressBar = document.getElementById('progressBar');
-            }
+    async connectMicrophone() {
+        try {
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.analyser = this.audioContext.createAnalyser();
+            this.analyser.fftSize = 2048;
+            this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
+            this.source.connect(this.analyser);
+            this.isConnected = true;
+            this.updateStatus('마이크가 연결되었습니다. 분석을 시작할 수 있습니다.', 'success');
+            this.connectBtn.disabled = true;
+            this.startBtn.disabled = false;
+        } catch (err) {
+            this.updateStatus(`마이크 연결 실패: ${err.message}`, 'error');
+        }
+    }
 
-            bindEvents() {
-                this.connectBtn.addEventListener('click', () => this.connectMicrophone());
-                this.startBtn.addEventListener('click', () => this.startAnalysis());
-                this.stopBtn.addEventListener('click', () => this.stopAnalysis());
-                this.rpmInput.addEventListener('input', () => this.validateRPM());
-            }
+    validateRPM() {
+        const rpm = parseInt(this.rpmInput.value);
+        if (isNaN(rpm) || rpm < 300 || rpm > 10000) {
+            this.updateStatus('RPM 값은 300~10000 사이여야 합니다.', 'error');
+            this.startBtn.disabled = true;
+        } else {
+            this.updateStatus(this.isConnected ? '마이크가 연결되었습니다. 분석을 시작할 수 있습니다.' : 'RPM 값이 유효합니다.', this.isConnected ? 'success' : 'status');
+            if (this.isConnected) this.startBtn.disabled = false;
+        }
+    }
 
-            checkMobileSupport() {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    this.updateStatus('이 브라우저는 마이크 접근을 지원하지 않습니다.', 'error');
-                    this.connectBtn.disabled = true;
-                }
-            }
+    startAnalysis() {
+        if (!this.isConnected) {
+            this.updateStatus('먼저 마이크를 연결해주세요.', 'error');
+            return;
+        }
+        const rpm = parseInt(this.rpmInput.value);
+        if (isNaN(rpm) || rpm < 300 || rpm > 10000) {
+             this.updateStatus('유효한 RPM 값을 입력해주세요.', 'error');
+             return;
+        }
+        
+        this.isAnalyzing = true;
+        this.allMeasurements = [];
+        this.currentIntervalMeasurements = [];
+        this.intervalCount = 0;
+        this.startTime = performance.now();
+        this.measurementList.innerHTML = '';
+        this.finalResult.innerHTML = '';
+        this.progressContainer.style.display = 'block';
+        this.results.style.display = 'block';
+        this.startBtn.disabled = true;
+        this.stopBtn.disabled = false;
+        this.updateStatus(`소리 분석 중... (목표 RPM: ${rpm})`, 'analyzing');
 
-            setupVisibilityHandling() {
-                document.addEventListener('visibilitychange', () => {
-                    if (document.hidden && this.isAnalyzing) {
-                        this.stopAnalysis();
-                    }
-                });
-            }
+        this.measurementInterval = setInterval(() => this.analyzeAudioStep(), this.ANALYSIS_INTERVAL_MS);
+    }
 
-            async connectMicrophone() {
-                try {
-                    this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 2048;
-                    this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
-                    this.source.connect(this.analyser);
-                    this.isConnected = true;
-                    this.updateStatus('마이크가 연결되었습니다. 분석을 시작할 수 있습니다.', 'success');
-                    this.connectBtn.disabled = true;
-                    this.startBtn.disabled = false;
-                } catch (err) {
-                    this.updateStatus(`마이크 연결 실패: ${err.message}`, 'error');
-                }
-            }
+    analyzeAudioStep() {
+        if (!this.isAnalyzing) return;
 
-            validateRPM() {
-                const rpm = parseInt(this.rpmInput.value);
-                if (isNaN(rpm) || rpm < 300 || rpm > 10000) {
-                    this.updateStatus('RPM 값은 300~10000 사이여야 합니다.', 'error');
-                    this.startBtn.disabled = true;
-                } else {
-                    this.updateStatus('RPM 값이 유효합니다.', 'success');
-                    if (this.isConnected) this.startBtn.disabled = false;
-                }
-            }
+        const bufferLength = this.analyser.frequencyBinCount;
+        const dataArray = new Float32Array(bufferLength);
+        this.analyser.getFloatFrequencyData(dataArray);
 
-            startAnalysis() {
-                if (!this.isConnected) {
-                    this.updateStatus('먼저 마이크를 연결해주세요.', 'error');
-                    return;
-                }
-                this.isAnalyzing = true;
-                this.measurements = [];
-                this.measurementCount = 0;
-                this.currentProgress = 0;
-                this.startTime = performance.now();
-                this.progressContainer.style.display = 'block';
-                this.results.style.display = 'none';
-                this.startBtn.disabled = true;
-                this.stopBtn.disabled = false;
-                this.updateStatus('소리 분석 중...', 'analyzing');
-                this.analyzeAudio();
-            }
+        const rpm = parseInt(this.rpmInput.value);
+        const sampleRate = this.audioContext.sampleRate;
+        const binWidth = sampleRate / this.analyser.fftSize;
 
-            analyzeAudio() {
-                if (!this.isAnalyzing) return;
-
-                const bufferLength = this.analyser.frequencyBinCount;
-                const dataArray = new Float32Array(bufferLength);
-                this.analyser.getFloatFrequencyData(dataArray);
-
-                const rpm = parseInt(this.rpmInput.value);
-                const expectedHz = (rpm / 60); // RPM to Hz (fundamental frequency)
-                const sampleRate = this.audioContext.sampleRate;
-                const binWidth = sampleRate / this.analyser.fftSize;
-                const targetBin = Math.round(expectedHz / binWidth);
-
-                let maxAmplitude = -Infinity;
-                let maxBin = 0;
-                for (let i = 0; i < bufferLength; i++) {
-                    if (dataArray[i] > maxAmplitude) {
-                        maxAmplitude = dataArray[i];
-                        maxBin = i;
-                    }
-                }
-
-                const detectedHz = maxBin * binWidth;
-                const detectedRPM = detectedHz * 60;
-                const tolerance = 0.1; // 10% tolerance
-                const isValid = Math.abs(detectedRPM - rpm) <= rpm * tolerance;
-
-                this.measurements.push({
-                    time: ((performance.now() - this.startTime) / 1000).toFixed(2),
-                    detectedRPM,
-                    isValid
-                });
-                this.measurementCount++;
-
-                this.updateProgress();
-                this.displayMeasurement({
-                    time: this.measurements[this.measurements.length - 1].time,
-                    detectedRPM: this.measurements[this.measurements.length - 1].detectedRPM,
-                    isValid: this.measurements[this.measurements.length - 1].isValid
-                });
-
-                if (this.measurementCount < 5) {
-                    this.currentMeasurementTimeout = setTimeout(() => this.analyzeAudio(), 1000);
-                } else {
-                    this.stopAnalysis();
-                }
-            }
-
-            stopAnalysis() {
-                this.isAnalyzing = false;
-                clearTimeout(this.currentMeasurementTimeout);
-                this.progressContainer.style.display = 'none';
-                this.stopBtn.disabled = true;
-                this.startBtn.disabled = false;
-                this.updateStatus('분석이 완료되었습니다.', 'success');
-                this.displayResults();
-            }
-
-            updateStatus(message, type) {
-                this.status.textContent = message;
-                this.status.className = `status ${type}`;
-            }
-
-            updateProgress() {
-                this.currentProgress = (this.measurementCount / 5) * 100;
-                this.progressBar.style.width = `${this.currentProgress}%`;
-            }
-
-            displayMeasurement(measurement) {
-                const div = document.createElement('div');
-                div.className = 'measurement';
-                div.innerHTML = `시간: ${measurement.time}s | 검출 RPM: ${measurement.detectedRPM.toFixed(2)} | ${measurement.isValid ? '정상' : '비정상'}`;
-                this.measurementList.prepend(div);
-                this.results.style.display = 'block';
-            }
-
-            displayResults() {
-                const averageRPM = this.measurements.reduce((sum, m) => sum + m.detectedRPM, 0) / this.measurements.length;
-                const inputRPM = parseInt(this.rpmInput.value);
-                const isNormal = Math.abs(averageRPM - inputRPM) <= inputRPM * 0.1;
-                this.finalResult.textContent = `평균 RPM: ${averageRPM.toFixed(2)} | 상태: ${isNormal ? '정상' : '비정상'}`;
-                this.finalResult.className = `final-result ${isNormal ? 'success' : ''}`;
-            }
-
-            disconnect() {
-                if (this.mediaStream) {
-                    this.mediaStream.getTracks().forEach(track => track.stop());
-                }
-                if (this.audioContext) {
-                    this.audioContext.close();
-                }
-                this.isConnected = false;
-                this.isAnalyzing = false;
-                this.connectBtn.disabled = false;
-                this.startBtn.disabled = true;
-                this.stopBtn.disabled = true;
-                this.updateStatus('마이크 연결이 해제되었습니다.', 'error');
+        let maxAmplitude = -Infinity;
+        let maxBin = 0;
+        // 일정 주파수 범위 내에서 피크를 찾거나, 그냥 전체 피크를 찾도록 유지
+        for (let i = 0; i < bufferLength; i++) {
+            if (dataArray[i] > maxAmplitude) {
+                maxAmplitude = dataArray[i];
+                maxBin = i;
             }
         }
 
-        // Initialize the analyzer
-        const analyzer = new MobileAudioAnalyzer();
-    </script>
-</body>
-</html>
+        const detectedHz = maxBin * binWidth;
+        const detectedRPM = detectedHz * 60;
+        const tolerance = 0.1; // 10% tolerance
+        const isValid = Math.abs(detectedRPM - rpm) <= rpm * tolerance;
+        const currentTime = ((performance.now() - this.startTime) / 1000);
+
+        const measurement = {
+            time: currentTime.toFixed(1),
+            detectedRPM,
+            isValid
+        };
+        
+        this.allMeasurements.push(measurement);
+        this.currentIntervalMeasurements.push(measurement);
+
+        // 측정값을 리스트에 표시 (너무 많아지므로 주석 처리하거나, 적당히 필터링 필요)
+        // this.displayMeasurement(measurement);
+        
+        this.updateProgress(currentTime);
+
+        // 20초 간격으로 중간 결과 표시
+        if (currentTime >= (this.intervalCount + 1) * this.INTERVAL_DURATION_SEC) {
+            this.intervalCount++;
+            this.displayIntervalResult(this.intervalCount);
+            this.currentIntervalMeasurements = []; // 다음 간격을 위해 초기화
+
+            if (this.intervalCount >= this.TOTAL_INTERVALS) {
+                this.stopAnalysis();
+            }
+        }
+    }
+
+    stopAnalysis(isForced = false) {
+        if (!this.isAnalyzing) return;
+        
+        this.isAnalyzing = false;
+        clearInterval(this.measurementInterval);
+
+        this.progressContainer.style.display = 'none';
+        this.stopBtn.disabled = true;
+        this.startBtn.disabled = false;
+        
+        if (isForced) {
+             this.updateStatus('분석이 강제 중지되었습니다. (페이지 이동/숨김 등)', 'error');
+             return;
+        }
+
+        this.updateStatus('분석이 완료되었습니다. 최종 결과를 확인하세요.', 'success');
+        this.displayResults();
+    }
+
+    updateStatus(message, type) {
+        this.status.textContent = message;
+        this.status.className = `status ${type}`;
+    }
+
+    updateProgress(currentTime) {
+        const totalDuration = this.TOTAL_INTERVALS * this.INTERVAL_DURATION_SEC;
+        this.currentProgress = (currentTime / totalDuration) * 100;
+        if (this.currentProgress > 100) this.currentProgress = 100;
+        this.progressBar.style.width = `${this.currentProgress}%`;
+    }
+
+    // 개별 측정값 표시 (너무 많아질 수 있으므로 사용에 주의)
+    displayMeasurement(measurement) {
+        const div = document.createElement('div');
+        div.className = 'measurement';
+        div.innerHTML = `[${measurement.time}s] 검출 RPM: ${measurement.detectedRPM.toFixed(2)} | ${measurement.isValid ? '정상' : '비정상'}`;
+        this.measurementList.prepend(div);
+    }
+    
+    // 20초 간격 결과 표시
+    displayIntervalResult(count) {
+        const totalRPM = this.currentIntervalMeasurements.reduce((sum, m) => sum + m.detectedRPM, 0);
+        const averageRPM = this.currentIntervalMeasurements.length > 0 ? totalRPM / this.currentIntervalMeasurements.length : 0;
+        const inputRPM = parseInt(this.rpmInput.value);
+        const isNormal = Math.abs(averageRPM - inputRPM) <= inputRPM * 0.1;
+        
+        const div = document.createElement('div');
+        div.className = `measurement ${isNormal ? '' : 'error'}`;
+        div.style.borderLeftColor = isNormal ? '#48bb78' : '#e53e3e';
+        div.innerHTML = `
+            <strong>${count * this.INTERVAL_DURATION_SEC}초 구간 측정 결과 (시작: ${(count - 1) * this.INTERVAL_DURATION_SEC}s)</strong><br>
+            평균 검출 RPM: ${averageRPM.toFixed(2)} | 상태: ${isNormal ? '🟢 정상' : '🔴 비정상'}
+        `;
+        this.measurementList.prepend(div);
+    }
+
+    // 최종 결과 표시
+    displayResults() {
+        const totalRPM = this.allMeasurements.reduce((sum, m) => sum + m.detectedRPM, 0);
+        const averageRPM = this.allMeasurements.length > 0 ? totalRPM / this.allMeasurements.length : 0;
+        const inputRPM = parseInt(this.rpmInput.value);
+        const isNormal = Math.abs(averageRPM - inputRPM) <= inputRPM * 0.1;
+        
+        this.finalResult.textContent = `최종 평균 RPM: ${averageRPM.toFixed(2)} | 상태: ${isNormal ? '✨ 정상' : '⚠️ 비정상'}`;
+        this.finalResult.className = `final-result ${isNormal ? 'success' : ''}`;
+    }
+
+    disconnect() {
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+        }
+        if (this.audioContext) {
+            this.audioContext.close();
+        }
+        clearInterval(this.measurementInterval);
+        this.isConnected = false;
+        this.isAnalyzing = false;
+        this.connectBtn.disabled = false;
+        this.startBtn.disabled = true;
+        this.stopBtn.disabled = true;
+        this.updateStatus('마이크 연결이 해제되었습니다.', 'status');
+        this.progressContainer.style.display = 'none';
+    }
+}
+
+// Initialize the analyzer
+const analyzer = new MobileAudioAnalyzer();
