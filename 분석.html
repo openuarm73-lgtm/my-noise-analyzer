@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="소리분석기">
-    <title>소리 분석기 - RPM 기반 (주파수 범위 ±3%)</title>
+    <title>소리 분석기 - 범용 RPM 기반 (확장 입력)</title>
     <style>
         /* CSS Styles: 모바일 및 웹뷰 환경에 최적화된 디자인 */
         * {
@@ -50,6 +50,12 @@
             margin-bottom: 20px;
         }
         
+        .grid-input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
         label {
             display: block;
             margin-bottom: 8px;
@@ -165,11 +171,22 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎵 소리 분석기 (지속 측정 모드)</h1>
+        <h1>🎵 소리 분석기 (범용 측정 모드)</h1>
         
         <div class="input-group">
-            <label for="rpmInput">RPM 값 입력:</label>
+            <label for="rpmInput">1. RPM 값 입력:</label>
             <input type="number" id="rpmInput" value="1500" min="300" max="10000" step="100" inputmode="numeric">
+        </div>
+
+        <div class="grid-input-group">
+            <div class="input-group">
+                <label for="bladeCountInput">2. 블레이드 수 (기본 주파수 배수):</label>
+                <input type="number" id="bladeCountInput" value="20" min="1" max="100" step="1" inputmode="numeric">
+            </div>
+            <div class="input-group">
+                <label for="defectFactorInput">3. 결함 주파수 배수 (피크 주파수 배수):</label>
+                <input type="number" id="defectFactorInput" value="7" min="1" max="100" step="1" inputmode="numeric">
+            </div>
         </div>
         
         <div class="button-group">
@@ -184,7 +201,7 @@
         
         <div class="permission-help">
             **⚠️ 주파수 검색 범위:** 목표 주파수($\text{Hz}$)의 **$\pm 3\%$**로 설정되었습니다.<br>
-            **공식:** $\text{RPM}/60 \times 20$ 가 기본 주파수입니다.
+            **공식:** 기본 주파수 $(\text{Hz}) = (\text{RPM}/60) \times \text{블레이드 수}$ 입니다.
         </div>
         
         <div class="results">
@@ -203,6 +220,8 @@
                 this.startButton = document.getElementById('startButton');
                 this.stopButton = document.getElementById('stopButton');
                 this.rpmInput = document.getElementById('rpmInput');
+                this.bladeCountInput = document.getElementById('bladeCountInput');
+                this.defectFactorInput = document.getElementById('defectFactorInput');
                 this.statusElement = document.getElementById('status');
                 this.resultElement = document.getElementById('currentResult');
 
@@ -216,7 +235,9 @@
                 this.connectBtn.addEventListener('click', () => this.connectMicrophone());
                 this.startButton.addEventListener('click', () => this.startAnalysis());
                 this.stopButton.addEventListener('click', () => this.stopAnalysis());
-                this.rpmInput.addEventListener('input', () => this.validateRPM());
+                this.rpmInput.addEventListener('input', () => this.validateInputs());
+                this.bladeCountInput.addEventListener('input', () => this.validateInputs());
+                this.defectFactorInput.addEventListener('input', () => this.validateInputs());
 
                 this.checkMobileSupport();
             }
@@ -228,13 +249,33 @@
                 }
             }
             
-            validateRPM() {
+            validateInputs() {
                 const rpm = parseInt(this.rpmInput.value);
+                const bladeCount = parseInt(this.bladeCountInput.value);
+                const defectFactor = parseInt(this.defectFactorInput.value);
+
+                let isValid = true;
+                let message = '';
+
                 if (isNaN(rpm) || rpm < 300 || rpm > 10000) {
-                    this.updateStatus('RPM 값은 300~10000 사이여야 합니다.', 'error');
-                    this.startButton.disabled = true;
+                    message = 'RPM 값은 300~10000 사이여야 합니다.';
+                    isValid = false;
+                } else if (isNaN(bladeCount) || bladeCount < 1) {
+                    message = '블레이드 수는 1 이상이어야 합니다.';
+                    isValid = false;
+                } else if (isNaN(defectFactor) || defectFactor < 1) {
+                    message = '결함 배수는 1 이상이어야 합니다.';
+                    isValid = false;
+                }
+
+                if (isValid) {
+                    if (this.audioContext) {
+                        this.startButton.disabled = false;
+                        this.updateStatus('마이크 연결 성공. 분석을 시작할 수 있습니다.', 'success');
+                    }
                 } else {
-                    if (this.audioContext) this.startButton.disabled = false;
+                    this.updateStatus(message, 'error');
+                    this.startButton.disabled = true;
                 }
             }
 
@@ -258,9 +299,8 @@
                     
                     source.connect(this.analyser);
                     
-                    this.updateStatus('마이크 연결 성공. 분석을 시작할 수 있습니다.', 'success');
                     this.connectBtn.disabled = true;
-                    this.validateRPM(); 
+                    this.validateInputs(); 
                 } catch (err) {
                     this.updateStatus(`마이크 연결 실패: ${err.message}`, 'error');
                 }
@@ -269,11 +309,8 @@
             startAnalysis() {
                 if (this.isRunning) return;
                 
+                // 입력값 유효성 검사는 이미 validateInputs에서 처리됨
                 const rpm = parseInt(this.rpmInput.value);
-                if (isNaN(rpm) || rpm <= 0) {
-                    this.updateStatus('유효한 RPM을 입력하고 다시 시작하세요.', 'error');
-                    return;
-                }
 
                 this.isRunning = true;
                 this.startButton.disabled = true;
@@ -305,7 +342,7 @@
 
             /**
              * @private
-             * 🔔 수정됨: 목표 주파수(Hz)의 ±3% 범위에 해당하는 Bin을 모두 포함하여 평균 진폭(dB)을 계산합니다.
+             * 목표 주파수(Hz)의 ±3% 범위에 해당하는 Bin을 모두 포함하여 평균 진폭(dB)을 계산합니다.
              */
             getAmplitudeInRange(targetHz, binWidth, dataArray) {
                 // 3% 오차를 적용한 최소/최대 주파수 계산
@@ -337,16 +374,21 @@
                     return;
                 }
 
+                // 입력값 가져오기
                 const rpm = parseInt(this.rpmInput.value);
+                const bladeCount = parseInt(this.bladeCountInput.value);
+                const defectFactor = parseInt(this.defectFactorInput.value);
+
+                // 오디오 분석 설정
                 const sampleRate = this.audioContext.sampleRate;
                 const binWidth = sampleRate / this.analyser.fftSize;
                 const dataArray = new Float32Array(this.analyser.frequencyBinCount);
                 
                 this.analyser.getFloatFrequencyData(dataArray);
 
-                // 1. 주파수 계산: (RPM / 60) * 20
-                const fundamentalHz = (rpm / 60) * 20; 
-                const peakHz = fundamentalHz * 7;      
+                // 1. 주파수 계산: (RPM / 60) * bladeCount
+                const fundamentalHz = (rpm / 60) * bladeCount; 
+                const peakHz = fundamentalHz * defectFactor;      
 
                 // 2. 개선된 진폭 획득 (±3% 범위 적용)
                 const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, dataArray);
@@ -360,10 +402,14 @@
 
                 this.resultElement.innerHTML = `
                     <h3>✅ 실시간 dB 측정값</h3>
-                    <p>기본 주파수 (${fundamentalHz.toFixed(2)} Hz, 범위: ±3%) 평균 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong></p>
-                    <p>피크 주파수 (${peakHz.toFixed(2)} Hz, 범위: ±3%) 평균 진폭: <strong>${peakAmplitude.toFixed(2)} dB</strong></p>
+                    <p>
+                        **기본 주파수 (${bladeCount}배):** (${fundamentalHz.toFixed(2)} Hz) 평균 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong>
+                    </p>
+                    <p>
+                        **결함 주파수 (${defectFactor}배):** (${peakHz.toFixed(2)} Hz) 평균 진폭: <strong>${peakAmplitude.toFixed(2)} dB</strong>
+                    </p>
                     <p style="font-size: 1.2em;">
-                        dB 차이 (피크 - 기본): <span class="${diffClass}">
+                        dB 차이 (결함 - 기본): <span class="${diffClass}">
                             ${amplitudeDifference.toFixed(2)} dB
                         </span>
                     </p>
