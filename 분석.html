@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="소리분석기">
-    <title>소리 분석기 - 범용 RPM 기반 (확장 입력)</title>
+    <title>소리 분석기 - 최대 피크 분석</title>
     <style>
         /* CSS Styles: 모바일 및 웹뷰 환경에 최적화된 디자인 */
         * {
@@ -119,7 +119,7 @@
         
         .status {
             background: #f7fafc;
-            border-left: 4px solid #4299e1;
+            border-left: 4px solid #f56565;
             padding: 16px;
             margin-bottom: 20px;
             border-radius: 0 10px 10px 0;
@@ -171,7 +171,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎵 소리 분석기 (범용 측정 모드)</h1>
+        <h1>🎵 소리 분석기 (최대 피크 분석)</h1>
         
         <div class="input-group">
             <label for="rpmInput">1. RPM 값 입력:</label>
@@ -180,11 +180,11 @@
 
         <div class="grid-input-group">
             <div class="input-group">
-                <label for="bladeCountInput">2. 블레이드 수 (기본 주파수 배수):</label>
+                <label for="bladeCountInput">2. 기본 주파수 배수 (블레이드 수 등):</label>
                 <input type="number" id="bladeCountInput" value="20" min="1" max="100" step="1" inputmode="numeric">
             </div>
             <div class="input-group">
-                <label for="defectFactorInput">3. 결함 주파수 배수 (피크 주파수 배수):</label>
+                <label for="defectFactorInput">3. 결함 주파수 배수 (피크주파수):</label>
                 <input type="number" id="defectFactorInput" value="7" min="1" max="100" step="1" inputmode="numeric">
             </div>
         </div>
@@ -199,16 +199,15 @@
             시작하려면 마이크 연결을 터치해주세요.
         </div>
         
-        <div class="permission-help">
-            **⚠️ 주파수 검색 범위:** 목표 주파수($\text{Hz}$)의 **$\pm 3\%$**로 설정되었습니다.<br>
-            **공식:** 기본 주파수 $(\text{Hz}) = (\text{RPM}/60) \times \text{블레이드 수}$ 입니다.
-        </div>
-        
         <div class="results">
-            <h3>📈 실시간 $\text{dB}$ 차이 측정</h3>
+            <h3>📈 $\text{dB}$ 차이 측정</h3>
             <div id="currentResult">
                 분석을 시작하면 여기에 결과가 표시됩니다.
             </div>
+        </div>
+        
+        <div class="permission-help">
+            **✅ 분석 조건:** $\text{AGC}$ 등 자동 기능 **비활성화**. $\text{FFT Size}$ **4096**. $\text{dB}$ 추출 방식이 **범위 내 최대 피크**로 변경되었습니다.
         </div>
     </div>
 
@@ -235,9 +234,9 @@
                 this.connectBtn.addEventListener('click', () => this.connectMicrophone());
                 this.startButton.addEventListener('click', () => this.startAnalysis());
                 this.stopButton.addEventListener('click', () => this.stopAnalysis());
-                this.rpmInput.addEventListener('input', () => this.validateInputs());
-                this.bladeCountInput.addEventListener('input', () => this.validateInputs());
-                this.defectFactorInput.addEventListener('input', () => this.validateInputs());
+                [this.rpmInput, this.bladeCountInput, this.defectFactorInput].forEach(input => {
+                    input.addEventListener('input', () => this.validateInputs());
+                });
 
                 this.checkMobileSupport();
             }
@@ -261,10 +260,10 @@
                     message = 'RPM 값은 300~10000 사이여야 합니다.';
                     isValid = false;
                 } else if (isNaN(bladeCount) || bladeCount < 1) {
-                    message = '블레이드 수는 1 이상이어야 합니다.';
+                    message = '기본 주파수 배수(블레이드 수)는 1 이상이어야 합니다.';
                     isValid = false;
                 } else if (isNaN(defectFactor) || defectFactor < 1) {
-                    message = '결함 배수는 1 이상이어야 합니다.';
+                    message = '결함 주파수 배수는 1 이상이어야 합니다.';
                     isValid = false;
                 }
 
@@ -291,11 +290,21 @@
                          await this.audioContext.resume();
                     }
                     
-                    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    // AGC, 노이즈 억제, 에코 제거 비활성화
+                    this.stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            autoGainControl: false,
+                            noiseSuppression: false,
+                            echoCancellation: false
+                        }
+                    });
+
                     const source = this.audioContext.createMediaStreamSource(this.stream);
                     
                     this.analyser = this.audioContext.createAnalyser();
                     this.analyser.fftSize = 4096; 
+                    this.analyser.minDecibels = -100;
+                    this.analyser.maxDecibels = 0;
                     
                     source.connect(this.analyser);
                     
@@ -309,7 +318,6 @@
             startAnalysis() {
                 if (this.isRunning) return;
                 
-                // 입력값 유효성 검사는 이미 validateInputs에서 처리됨
                 const rpm = parseInt(this.rpmInput.value);
 
                 this.isRunning = true;
@@ -317,7 +325,7 @@
                 this.stopButton.disabled = false;
                 this.updateStatus(`분석 중... (목표 RPM: ${rpm})`, 'analyzing');
 
-                requestAnimationFrame(() => this.analyzeAudioStep());
+                requestAnimationFrame((time) => this.analyzeAudioStep(time));
             }
 
             stopAnalysis() {
@@ -334,42 +342,46 @@
                     this.audioContext = null;
                 }
 
-                this.startButton.disabled = false;
+                this.startButton.disabled = true; 
                 this.stopButton.disabled = true;
-                this.connectBtn.disabled = false;
+                this.connectBtn.disabled = false; 
                 this.updateStatus("분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.", 'error');
             }
 
             /**
              * @private
-             * 목표 주파수(Hz)의 ±3% 범위에 해당하는 Bin을 모두 포함하여 평균 진폭(dB)을 계산합니다.
+             * 목표 주파수(Hz)의 ±3% 범위에 해당하는 Bin 중 최대 진폭(dB)을 반환합니다.
+             * 분별력 개선을 위해 평균 대신 최대값을 사용합니다.
              */
-            getAmplitudeInRange(targetHz, binWidth, dataArray) {
+            getAmplitudeInRange(targetHz, binWidth, dataArray, rangePercent) {
                 // 3% 오차를 적용한 최소/최대 주파수 계산
-                const minHz = targetHz * 0.97;
-                const maxHz = targetHz * 1.03;
+                const minHz = targetHz * (1 - rangePercent);
+                const maxHz = targetHz * (1 + rangePercent);
 
                 // 해당 주파수를 Bin 인덱스로 변환
                 const minBin = Math.floor(minHz / binWidth);
                 const maxBin = Math.ceil(maxHz / binWidth);
                 
-                let sumAmplitude = 0;
+                let maxAmplitude = -100; // dB 최소값으로 초기화
                 let count = 0;
                 
-                // minBin부터 maxBin까지 순회하며 진폭 합산
+                // minBin부터 maxBin까지 순회하며 최대 진폭(Max Peak)을 찾습니다.
                 for (let i = minBin; i <= maxBin; i++) {
                     // 배열 범위 검사
                     if (i >= 0 && i < dataArray.length) {
-                        sumAmplitude += dataArray[i];
+                        if (dataArray[i] > maxAmplitude) {
+                            maxAmplitude = dataArray[i];
+                        }
                         count++;
                     }
                 }
                 
-                return count > 0 ? sumAmplitude / count : -100;
+                // 검색된 Bin이 없으면 매우 낮은 값(-100dB) 반환
+                return count > 0 ? maxAmplitude : -100;
             }
 
             // 🔔 핵심 분석 로직
-            analyzeAudioStep() {
+            analyzeAudioStep(time) {
                 if (!this.isRunning || !this.analyser) {
                     return;
                 }
@@ -383,30 +395,29 @@
                 const sampleRate = this.audioContext.sampleRate;
                 const binWidth = sampleRate / this.analyser.fftSize;
                 const dataArray = new Float32Array(this.analyser.frequencyBinCount);
-                
                 this.analyser.getFloatFrequencyData(dataArray);
 
-                // 1. 주파수 계산: (RPM / 60) * bladeCount
+                // 1. 주파수 계산
                 const fundamentalHz = (rpm / 60) * bladeCount; 
                 const peakHz = fundamentalHz * defectFactor;      
 
-                // 2. 개선된 진폭 획득 (±3% 범위 적용)
-                const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, dataArray);
-                const peakAmplitude = this.getAmplitudeInRange(peakHz, binWidth, dataArray);
-
+                // 2. 최대 진폭 획득 (±3% 범위 적용)
+                const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, dataArray, 0.03);
+                const peakAmplitude = this.getAmplitudeInRange(peakHz, binWidth, dataArray, 0.03);
+                
                 // 3. 진폭 차이 (dB) 계산
                 const amplitudeDifference = peakAmplitude - fundamentalAmplitude;
                 
-                // 4. 결과 출력 포맷 설정 (임의의 색상 기준 적용: 0 dB 이상이면 빨간색)
+                // 4. 결과 출력 포맷 설정
                 const diffClass = amplitudeDifference > 0 ? 'db-diff-high' : 'db-diff-low';
 
                 this.resultElement.innerHTML = `
                     <h3>✅ 실시간 dB 측정값</h3>
                     <p>
-                        **기본 주파수 (${bladeCount}배):** (${fundamentalHz.toFixed(2)} Hz) 평균 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong>
+                        **기본 주파수 (${bladeCount}배):** (${fundamentalHz.toFixed(2)} Hz) 최대 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong>
                     </p>
                     <p>
-                        **결함 주파수 (${defectFactor}배):** (${peakHz.toFixed(2)} Hz) 평균 진폭: <strong>${peakAmplitude.toFixed(2)} dB</strong>
+                        **결함 주파수 (${defectFactor}배):** (${peakHz.toFixed(2)} Hz) 최대 진폭: <strong>${peakAmplitude.toFixed(2)} dB</strong>
                     </p>
                     <p style="font-size: 1.2em;">
                         dB 차이 (결함 - 기본): <span class="${diffClass}">
@@ -415,8 +426,8 @@
                     </p>
                 `;
 
-                // 5. 다음 분석 예약
-                requestAnimationFrame(() => this.analyzeAudioStep());
+                // 5. 다음 분석 예약 (10ms 간격 제한 해제, requestAnimationFrame의 최대 속도로 실행)
+                requestAnimationFrame((time) => this.analyzeAudioStep(time));
             }
         }
 
@@ -427,4 +438,3 @@
     </script>
 </body>
 </html>
-
