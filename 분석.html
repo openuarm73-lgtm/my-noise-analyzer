@@ -1,255 +1,129 @@
        <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>펠리타이저 소음 분석 (20초 주기, 2단계 시작)</title>
-    
-    <style>
-        /* 1. 다크 모드 및 기본 레이아웃 */
-        :root {
-            --color-bg-primary: #121212;
-            --color-bg-secondary: #1f1f1f;
-            --color-text-primary: #e0e0e0;
-            --color-accent: #64b5f6; /* 밝은 파랑 */
-            --color-connect: #007bff; /* 연결 버튼 파랑 */
-            --color-success: #4caf50;
-            --color-danger: #e57373;
-            --color-warning: #ffc107;
-            --color-border: #333333;
-        }
-
-        body { 
-            font-family: 'Malgun Gothic', 'Arial', sans-serif; 
-            padding: 15px; 
-            background-color: var(--color-bg-primary); 
-            color: var(--color-text-primary); 
-            line-height: 1.6;
-            margin: 0;
-        }
-        .container { 
-            max-width: 600px; 
-            margin: 0 auto; 
-            padding: 20px; 
-            border-radius: 12px;
-            background-color: var(--color-bg-secondary); 
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-        }
-        h2 { 
-            border-bottom: 3px solid var(--color-accent); 
-            padding-bottom: 10px; 
-            margin-top: 0;
-            color: var(--color-accent); 
-            font-size: 1.8em; 
-            text-align: center;
-        }
-        
-        /* 2. 입력 및 버튼 (모바일 터치 최적화) */
-        input[type="number"], button { 
-            margin: 12px 0; 
-            padding: 18px 15px; 
-            width: 100%; 
-            box-sizing: border-box; 
-            border-radius: 10px; 
-            font-size: 1.15em;
-            border: 1px solid var(--color-border);
-            background-color: #333333; 
-            color: var(--color-text-primary);
-            font-weight: 500;
-            transition: background-color 0.2s;
-        }
-        
-        #connectButton { background-color: var(--color-connect); color: white; border: none; font-weight: bold; }
-        #connectButton:disabled { background-color: #0056b3; }
-        #analyzeButton { background-color: var(--color-success); color: white; border: none; font-weight: bold; }
-        #analyzeButton:disabled { background-color: #2e7d32; }
-        #stopButton { background-color: var(--color-danger); color: white; border: none; font-weight: bold; }
-        #stopButton:disabled { background-color: #a32a2a; }
-
-        /* 3. 상태 및 메시지 (생략) */
-        .alert-message {
-            color: #ffab91; 
-            padding: 15px;
-            border: 1px dashed #ffab91;
-            border-radius: 8px;
-            background-color: #3e2723;
-            font-size: 1em;
-            margin-bottom: 20px;
-        }
-        #status-display {
-            color: var(--color-accent); 
-            font-weight: bold;
-            padding: 15px 0;
-            border-top: 1px dashed var(--color-border);
-            margin-top: 15px;
-            font-size: 1.2em;
-            text-align: center;
-        }
-
-        /* 4. 결과 표시 영역 (생략) */
-        #realtime-results { 
-            margin-top: 30px; 
-            padding: 15px; 
-            background-color: var(--color-bg-secondary); 
-            border-radius: 8px;
-            border: 1px solid var(--color-border);
-        }
-        .label { 
-            font-weight: bold; 
-            color: var(--color-text-primary); 
-            margin-bottom: 15px;
-            display: block;
-            font-size: 1.1em;
-            border-bottom: 2px solid var(--color-border);
-            padding-bottom: 5px;
-        }
-        .result-entry { 
-            border-bottom: 1px solid #282828; 
-            padding: 15px 0; 
-            margin-bottom: 15px; 
-        }
-        .result-entry:first-of-type {
-            border-top: 2px solid var(--color-accent); 
-            padding-top: 20px;
-        }
-        .diff-result {
-            font-size: 1.5em; 
-            color: #121212;
-            background-color: var(--color-warning); 
-            display: block; 
-            padding: 12px;
-            border-radius: 8px;
-            margin: 10px 0;
-            font-weight: bold;
-            text-align: center;
-        }
-        strong {
-            color: #ffffff; 
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>소리 분석 웹앱</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 10px; }
+    label, input, button { font-size: 1.2em; }
+    .controls { display: flex; flex-direction: column; gap: 18px; margin-bottom: 24px; }
+    button { padding: 10px 12px; border-radius: 5px; border: 1px solid #bbb; background: #f9f9f9; }
+    .result { margin-top: 24px; font-size: 1.15em; }
+  </style>
 </head>
 <body>
+  <h2>소리 분석 (RPM 기반)</h2>
+  <div class="controls">
+    <label>RPM 입력: <input type="number" id="rpmInput" min="1" value="1800" style="width:90px"></label>
+    <button id="micBtn">마이크 연결</button>
+    <button id="startBtn">분석 시작</button>
+    <button id="stopBtn">분석 중지</button>
+  </div>
+  <div class="result" id="result"></div>
 
-<div class="container">
-    <h2>⚙️ 펠리타이저 소음 분석기</h2>
+  <script>
+    let audioContext, analyser, source, mediaStream;
+    let intervalId, startTime, allDiffs = [];
+    let isAnalyzing = false;
 
-    <p class="alert-message">
-        **필수:** HTTPS 환경에서만 작동하며, 마이크 권한이 필요합니다.
-    </p>
-    
-    <label class="label" for="rpm">1. 펠리타이저 RPM 입력:</label>
-    <input type="number" id="rpm" value="1200" placeholder="RPM (예: 1200)" min="1">
+    const rpmInput = document.getElementById('rpmInput');
+    const micBtn = document.getElementById('micBtn');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resultDiv = document.getElementById('result');
 
-    <button onclick="connectMicrophone()" id="connectButton">2. 마이크 연결</button>
-    <button onclick="startAnalysis()" id="analyzeButton" disabled>3. 분석 시작</button>
-    <button onclick="stopMicrophoneAnalysis()" id="stopButton" disabled>4. 분석 정지 및 최종 구간 표시</button>
-    
-    <p id="status-display">RPM을 입력하고 '마이크 연결' 버튼을 눌러주세요.</p>
-
-    <div id="realtime-results">
-        <p class="label">📝 분석 결과 기록:</p>
-    </div>
-</div>
-
-<script>
-    // --- 1. 전역 변수 및 설정 ---
-    let audioContext;
-    let analyser;
-    let mediaStreamSource = null;
-    let mediaStream = null;
-    let analysisIntervalId = null;
-
-    let snapshotCount = 0;
-    let cumulativeAmplitudeFund = 0; 
-    let cumulativeAmplitudePeak = 0; 
-    let analysisStartTime = 0; 
-    
-    const INTERVAL_SEC = 20; // 20초 주기
-    const FIRST_SEGMENT_START = 0; // 0초부터 시작
-
-    const rpmInput = document.getElementById('rpm');
-    const connectButton = document.getElementById('connectButton');
-    const analyzeButton = document.getElementById('analyzeButton');
-    const stopButton = document.getElementById('stopButton');
-    const statusDisplay = document.getElementById('status-display');
-    const resultsContainer = document.getElementById('realtime-results');
-
-
-    // --- 2. 마이크 연결 함수 (신규) ---
-    async function connectMicrophone() {
-        try {
-            connectButton.disabled = true;
-            statusDisplay.innerText = '마이크 접근 권한 요청 중...';
-            
-            // AudioContext 초기화 및 재개
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 4096;
-            }
-            if (audioContext.state === 'suspended') {
-                await audioContext.resume();
-            }
-
-            // 마이크 스트림 획득
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            
-            // AudioNode 연결
-            mediaStreamSource = audioContext.createMediaStreamSource(mediaStream);
-            mediaStreamSource.connect(analyser);
-            mediaStreamSource.connect(audioContext.destination); 
-            
-            statusDisplay.innerText = `✅ 마이크 연결 성공. 분석을 시작할 수 있습니다.`;
-            analyzeButton.disabled = false; // 분석 시작 버튼 활성화
-            
-        } catch (error) {
-            console.error('마이크 접근 또는 분석 오류:', error);
-            statusDisplay.innerText = `❌ 에러: 마이크 연결 실패. HTTPS 및 권한을 확인하세요.`;
-            connectButton.disabled = false;
-        }
+    // 주파수 Bin Index 계산 함수
+    function freqToIndex(freq, sampleRate, fftSize) {
+      return Math.round(freq / (sampleRate / fftSize));
     }
 
-    // --- 3. 분석 시작 함수 (활성화되면 호출됨) ---
-    function startAnalysis() {
-        const rpm = parseFloat(rpmInput.value);
-        if (isNaN(rpm) || rpm <= 0) {
-            alert('유효한 RPM 값을 입력해 주세요.');
-            return;
-        }
+    // 마이크 연결
+    micBtn.onclick = async function() {
+      if (audioContext) audioContext.close();
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-        if (!mediaStreamSource) {
-            alert('먼저 마이크 연결 버튼을 눌러주세요.');
-            return;
-        }
-        
-        analyzeButton.disabled = true;
-        stopButton.disabled = false;
-        
-        // 분석 변수 초기화
-        cumulativeAmplitudeFund = 0;
-        cumulativeAmplitudePeak = 0;
-        snapshotCount = 0;
-        analysisStartTime = audioContext.currentTime;
-        
-        // 결과 기록 영역 초기화
-        const labelElement = resultsContainer.querySelector('.label');
-        resultsContainer.innerHTML = '';
-        resultsContainer.appendChild(labelElement);
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({audio: true});
+        source = audioContext.createMediaStreamSource(mediaStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+        resultDiv.textContent = "마이크가 연결되었습니다.";
+      } catch (e) {
+        resultDiv.textContent = "마이크 연결 실패: " + e.message;
+      }
+    };
 
-        statusDisplay.innerText = `🟢 분석 시작됨. ${FIRST_SEGMENT_START}초부터 ${INTERVAL_SEC}초 주기 분석`;
-        
-        const F_fund = (rpm / 60) * 20;
-        const F_peak = F_fund * 7; 
+    // 단일 분석 함수
+    function analyze(rpm) {
+      const buffer = new Float32Array(analyser.frequencyBinCount);
+      analyser.getFloatFrequencyData(buffer);
+      const sampleRate = audioContext.sampleRate;
+      const fftSize = analyser.fftSize;
 
-        realtimeAnalysisLoop(F_fund, F_peak);
+      const baseFreq = rpm / 3;
+      const peakFreq = baseFreq * 7;
+
+      const baseIdx = freqToIndex(baseFreq, sampleRate, fftSize);
+      const peakIdx = freqToIndex(peakFreq, sampleRate, fftSize);
+
+      // 주변값 포함 평균 (±2)
+      function avgAround(idx) {
+        const range = 2, arr = [];
+        for(let i=Math.max(0,idx-range); i<=Math.min(buffer.length-1,idx+range); ++i) arr.push(buffer[i]);
+        return arr.reduce((a,b)=>a+b,0)/arr.length;
+      }
+      const avgBase = avgAround(baseIdx);
+      const avgPeak = avgAround(peakIdx);
+
+      return { avgBase, avgPeak, diff: avgPeak - avgBase };
     }
-    
-    // --- 4. 분석 중지 함수 (생략) ---
-    function stopMicrophoneAnalysis() {
-        if (analysisIntervalId) cancelAnimationFrame(analysisIntervalId);
-        analysisIntervalId = null;
-        
-        // 미디어 스트림/소스 연결 해제
+
+    // 분석 과정 로직
+    startBtn.onclick = function() {
+      if (!analyser) { resultDiv.textContent = "먼저 마이크를 연결하세요."; return; }
+      if (isAnalyzing) return;
+      isAnalyzing = true;
+      allDiffs = [];
+      startTime = Date.now();
+      resultDiv.textContent = "분석을 시작합니다.";
+      const rpm = Number(rpmInput.value);
+
+      // 20초 주기 측정 함수
+      function loop() {
+        let cnt = 0;
+        const measure = () => {
+          const {avgBase, avgPeak, diff} = analyze(rpm);
+          allDiffs.push(diff);
+          resultDiv.innerHTML = `20초 측정:<br>피크-기본 평균진폭차: <b>${diff.toFixed(2)}</b>`;
+          cnt++;
+          if (isAnalyzing) intervalId = setTimeout(measure, 20000);
+        };
+        measure();
+      }
+      loop();
+    };
+
+    // 분석 중지 및 전체 결과 표시
+    stopBtn.onclick = function() {
+      if (!isAnalyzing) return;
+      isAnalyzing = false;
+      clearTimeout(intervalId);
+      if (allDiffs.length > 0) {
+        const totalDiff = allDiffs.reduce((a,b)=>a+b,0)/allDiffs.length;
+        const duration = ((Date.now() - startTime)/1000).toFixed(1);
+        resultDiv.innerHTML = `
+           전체 측정 (${duration}초 동안 평균):<br>
+          피크주파수-기본주파수 평균진폭 차이: <b>${totalDiff.toFixed(2)}</b>
+        `;
+      } else {
+        resultDiv.textContent = "측정된 값이 없습니다.";
+      }
+    };
+  </script>
+</body>
+</html>
         if (mediaStream) {
             mediaStream.getTracks().forEach(track => track.stop());
             // mediaStream = null; // 연결을 유지할 필요 없음 (재분석시 재연결)
