@@ -1,168 +1,113 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>소음 분석기</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: #f4f6f8;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-        }
-        h2 {
-            color: #222;
-        }
-        .card {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        button {
-            background: #0078d4;
-            color: white;
-            border: none;
-            padding: 10px 16px;
-            border-radius: 8px;
-            font-size: 1rem;
-            cursor: pointer;
-        }
-        button:disabled {
-            background: #ccc;
-        }
-        .status {
-            font-weight: bold;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>소리 분석기</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f7fafc;
+    margin: 0;
+    padding: 20px;
+}
+.container {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    max-width: 500px;
+    margin: auto;
+}
+h1 {
+    text-align: center;
+}
+button {
+    margin: 5px;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+#connectBtn { background-color: #38a169; }
+#startBtn { background-color: #3182ce; }
+#stopBtn { background-color: #e53e3e; }
+#status { margin-top: 10px; font-weight: bold; }
+#timeElapsed { margin-top: 5px; color: #555; font-size: 0.9rem; }
+</style>
 </head>
 <body>
-    <h2>🎧 AI 기반 소음 분석기</h2>
+<div class="container">
+    <h1>🎤 소리 분석기</h1>
+    <button id="connectBtn">마이크 연결</button>
+    <button id="startBtn" disabled>분석 시작</button>
+    <button id="stopBtn" disabled>중지</button>
 
-    <div class="card">
-        <label>🎛 목표 RPM 입력: <input type="number" id="rpm" value="1800" min="0"> RPM</label>
-        <br><br>
-        <button id="startBtn">분석 시작</button>
-        <button id="stopBtn" disabled>중지</button>
-        <p class="status" id="statusText">대기 중...</p>
-    </div>
+    <div id="status">대기 중...</div>
+    <div id="timeElapsed">🕒 경과: 0초</div>
+</div>
 
-    <div class="card">
-        <h3>
-            📈 차이 측정 (이동 평균)
-            <span id="startTime" style="font-size:0.9rem; color:#555; margin-left:10px;">
-                <!-- 분석 경과 초 표시 -->
-            </span>
-        </h3>
-        <canvas id="chart" width="400" height="150"></canvas>
-    </div>
+<script>
+let audioContext, analyser, source, stream;
+let isRunning = false;
+let startTime = 0;
+let timer = null;
 
-    <script>
-        class NoiseAnalyzer {
-            constructor() {
-                this.audioContext = null;
-                this.analyser = null;
-                this.source = null;
-                this.dataArray = null;
-                this.isRunning = false;
-                this.chartCtx = document.getElementById('chart').getContext('2d');
-                this.statusText = document.getElementById('statusText');
-                this.rpmInput = document.getElementById('rpm');
-                this.startButton = document.getElementById('startBtn');
-                this.stopButton = document.getElementById('stopBtn');
-                this.diffHistory = [];
-                this.prevValue = 0;
-                this.avgWindow = 10;
-                this.startTimestamp = null; // 시작 시각 (ms)
-                this.timerInterval = null;  // 경과시간 표시용
-                this.initEvents();
-            }
+const connectBtn = document.getElementById('connectBtn');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
+const timeEl = document.getElementById('timeElapsed');
 
-            initEvents() {
-                this.startButton.addEventListener('click', () => this.startAnalysis());
-                this.stopButton.addEventListener('click', () => this.stopAnalysis());
-            }
+connectBtn.onclick = async () => {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        source = audioContext.createMediaStreamSource(stream);
+        analyser = audioContext.createAnalyser();
+        source.connect(analyser);
 
-            async startAnalysis() {
-                if (this.isRunning) return;
+        connectBtn.disabled = true;
+        startBtn.disabled = false;
+        statusEl.textContent = "✅ 마이크 연결됨. 분석 시작 가능.";
+    } catch (err) {
+        statusEl.textContent = "❌ 마이크 연결 실패: " + err.message;
+    }
+};
 
-                const rpm = parseInt(this.rpmInput.value);
-                this.isRunning = true;
-                this.startButton.disabled = true;
-                this.stopButton.disabled = false;
-                this.diffHistory = [];
-                this.updateStatus(`분석 중... (목표 RPM: ${rpm})`, 'analyzing');
+startBtn.onclick = () => {
+    if (!analyser) return;
+    isRunning = true;
+    startTime = Date.now();
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    statusEl.textContent = "📊 분석 중...";
+    timer = setInterval(updateElapsedTime, 1000);
+    requestAnimationFrame(analyze);
+};
 
-                // ✅ 시작 시각 기록 및 0초부터 카운트 시작
-                this.startTimestamp = Date.now();
-                const startTimeEl = document.getElementById('startTime');
-                startTimeEl.textContent = `🕒 경과: 0초`;
+stopBtn.onclick = () => {
+    isRunning = false;
+    clearInterval(timer);
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    statusEl.textContent = "⏹️ 분석 중지됨.";
+};
 
-                // 1초마다 갱신
-                this.timerInterval = setInterval(() => {
-                    const elapsedSec = Math.floor((Date.now() - this.startTimestamp) / 1000);
-                    startTimeEl.textContent = `🕒 경과: ${elapsedSec}초`;
-                }, 1000);
+function updateElapsedTime() {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    timeEl.textContent = `🕒 경과: ${elapsed}초`;
+}
 
-                // 오디오 스트림 시작
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                this.source = this.audioContext.createMediaStreamSource(stream);
-                this.analyser = this.audioContext.createAnalyser();
-                this.analyser.fftSize = 1024;
-                this.dataArray = new Float32Array(this.analyser.fftSize);
-                this.source.connect(this.analyser);
-                requestAnimationFrame((time) => this.analyzeAudioStep(time));
-            }
-
-            stopAnalysis() {
-                this.isRunning = false;
-                this.startButton.disabled = false;
-                this.stopButton.disabled = true;
-                clearInterval(this.timerInterval);
-                this.updateStatus("⏹️ 분석 중지됨", 'stopped');
-            }
-
-            analyzeAudioStep() {
-                if (!this.isRunning) return;
-                this.analyser.getFloatTimeDomainData(this.dataArray);
-                let avg = this.dataArray.reduce((a, b) => a + Math.abs(b), 0) / this.dataArray.length;
-                let diff = Math.abs(avg - this.prevValue);
-                this.prevValue = avg;
-                this.diffHistory.push(diff);
-                if (this.diffHistory.length > 100) this.diffHistory.shift();
-                this.drawChart();
-                requestAnimationFrame((time) => this.analyzeAudioStep(time));
-            }
-
-            drawChart() {
-                const ctx = this.chartCtx;
-                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-                ctx.beginPath();
-                ctx.moveTo(0, ctx.canvas.height);
-                this.diffHistory.forEach((val, i) => {
-                    const x = (i / this.diffHistory.length) * ctx.canvas.width;
-                    const y = ctx.canvas.height - val * 1000;
-                    ctx.lineTo(x, y);
-                });
-                ctx.strokeStyle = '#0078d4';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            }
-
-            updateStatus(text, state) {
-                this.statusText.textContent = text;
-                if (state === 'analyzing') this.statusText.style.color = '#0078d4';
-                else if (state === 'stopped') this.statusText.style.color = '#d40000';
-                else this.statusText.style.color = '#333';
-            }
-        }
-
-        new NoiseAnalyzer();
-    </script>
+function analyze() {
+    if (!isRunning) return;
+    const data = new Float32Array(analyser.frequencyBinCount);
+    analyser.getFloatFrequencyData(data);
+    const peak = Math.max(...data);
+    // 필요 시 여기에서 분석 로직 추가 가능
+    requestAnimationFrame(analyze);
+}
+</script>
 </body>
 </html>
-
