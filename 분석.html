@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="소리분석기">
-    <title>소리 분석기 - RMS & 이동 평균</title>
+    <title>소리 분석기 - 최대 피크 & 이동 평균</title>
     <style>
         /* CSS Styles: 모바일 및 웹뷰 환경에 최적화된 디자인 */
         * {
@@ -151,7 +151,7 @@
         }
 
         .db-diff-high {
-            color: #e53e3e;    
+            color: #e53e3e; 
             font-weight: bold;
         }
         .db-diff-low {
@@ -171,7 +171,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎵 소리 분석기 ($\text{RMS}$ 에너지 분석)</h1>
+        <h1>🎵 소리 분석기 (최대 피크 & 이동 평균)</h1>
         
         <div class="input-group">
             <label for="rpmInput">1. RPM 값 입력:</label>
@@ -200,14 +200,14 @@
         </div>
         
         <div class="results">
-            <h3>📈 $\text{dB}$ 차이 측정 ($\text{RMS}$ 기반, 이동 평균)</h3>
+            <h3>📈 $\text{dB}$ 차이 측정 (이동 평균)</h3>
             <div id="currentResult">
                 분석을 시작하면 여기에 결과가 표시됩니다.
             </div>
         </div>
         
         <div class="permission-help">
-            **✅ 분석 조건:** $\text{AGC}$ 등 자동 기능 **비활성화**. $\text{dB}$ 추출 방식 **범위 내 $\text{RMS}$ 에너지**로 변경되었습니다. $\text{dB}$ 차이 값에 **이동 평균 필터** 적용 중입니다. **분석 범위는 $8000\text{Hz}$ 이하로 제한됩니다.**
+            **✅ 분석 조건:** $\text{AGC}$ 등 자동 기능 **비활성화**. $\text{dB}$ 추출 방식 **범위 내 최대 피크** 사용. $\text{dB}$ 차이 값에 **이동 평균 필터** 적용 중입니다.
         </div>
     </div>
 
@@ -230,13 +230,10 @@
                 this.stream = null;
                 this.isRunning = false;
                 
-                // 이동 평균 필터 관련 속성
-                this.diffHistory = [];    
-                this.HISTORY_SIZE = 20;    
-                
-                // 시간 추적 속성
-                this.startTime = null;
-                this.elapsedTime = 0;
+                // 🔔 이동 평균 필터 관련 속성
+                this.diffHistory = []; // dB 차이 값을 저장할 배열
+                // requestAnimationFrame이 보통 60fps (16.6ms) 이므로 20개는 약 0.33초의 히스토리
+                this.HISTORY_SIZE = 20; 
                 
                 // 이벤트 리스너 설정
                 this.connectBtn.addEventListener('click', () => this.connectMicrophone());
@@ -295,11 +292,11 @@
                 try {
                     this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     if (this.audioContext.state === 'suspended') {
-                          await this.audioContext.resume();
+                         await this.audioContext.resume();
                     }
                     
                     // AGC, 노이즈 억제, 에코 제거 비활성화
-                    this.stream = await navigator.mediaDevices.getUserMedia({    
+                    this.stream = await navigator.mediaDevices.getUserMedia({ 
                         audio: {
                             autoGainControl: false,
                             noiseSuppression: false,
@@ -310,14 +307,14 @@
                     const source = this.audioContext.createMediaStreamSource(this.stream);
                     
                     this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 4096;    
+                    this.analyser.fftSize = 4096; 
                     this.analyser.minDecibels = -100;
                     this.analyser.maxDecibels = 0;
                     
                     source.connect(this.analyser);
                     
                     this.connectBtn.disabled = true;
-                    this.validateInputs();    
+                    this.validateInputs(); 
                 } catch (err) {
                     this.updateStatus(`마이크 연결 실패: ${err.message}`, 'error');
                 }
@@ -331,8 +328,7 @@
                 this.isRunning = true;
                 this.startButton.disabled = true;
                 this.stopButton.disabled = false;
-                this.diffHistory = [];
-                this.startTime = performance.now(); // Record start time
+                this.diffHistory = []; // 분석 시작 시 히스토리 초기화
                 this.updateStatus(`분석 중... (목표 RPM: ${rpm})`, 'analyzing');
 
                 requestAnimationFrame((time) => this.analyzeAudioStep(time));
@@ -352,89 +348,58 @@
                     this.audioContext = null;
                 }
 
-                this.startButton.disabled = true;
+                this.startButton.disabled = true; 
                 this.stopButton.disabled = true;
-                this.connectBtn.disabled = false;
-                this.startTime = null; // Reset start time
-                this.elapsedTime = 0; // Reset elapsed time
+                this.connectBtn.disabled = false; 
                 this.updateStatus("분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.", 'error');
             }
 
             /**
              * @private
-             * 목표 주파수(Hz)의 ±3% 범위에 해당하는 Bin들의 RMS 진폭을 계산하고 dB로 변환하여 반환합니다.
+             * 목표 주파수(Hz)의 ±3% 범위에 해당하는 Bin 중 최대 진폭(dB)을 반환합니다.
              */
             getAmplitudeInRange(targetHz, binWidth, dataArray, rangePercent) {
-                // 최대 주파수 8000Hz 제한
-                const MAX_FREQ_LIMIT = 8000;
-                
-                // 목표 주파수 자체가 8000Hz를 초과하면 분석 무시
-                if (targetHz > MAX_FREQ_LIMIT) {
-                    return -100;
-                }
-                
                 const minHz = targetHz * (1 - rangePercent);
                 const maxHz = targetHz * (1 + rangePercent);
 
-                // 상한선을 8000Hz로 제한
-                const effectiveMaxHz = Math.min(maxHz, MAX_FREQ_LIMIT); 
-
                 const minBin = Math.floor(minHz / binWidth);
-                const maxBin = Math.ceil(effectiveMaxHz / binWidth);
+                const maxBin = Math.ceil(maxHz / binWidth);
                 
-                let sumOfSquares = 0;
+                let maxAmplitude = -100; // dB 최소값으로 초기화
                 let count = 0;
                 
+                // minBin부터 maxBin까지 순회하며 최대 진폭(Max Peak)을 찾습니다.
                 for (let i = minBin; i <= maxBin; i++) {
                     if (i >= 0 && i < dataArray.length) {
-                        // 1. dB 값을 진폭(Amplitude)으로 변환
-                        // Amplitude = 10^(dB/20)
-                        const db = dataArray[i];
-                        const amplitude = Math.pow(10, db / 20);
-                        
-                        // 2. 제곱의 합 (Sum of Squares) 계산
-                        sumOfSquares += amplitude * amplitude;
+                        if (dataArray[i] > maxAmplitude) {
+                            maxAmplitude = dataArray[i];
+                        }
                         count++;
                     }
                 }
                 
-                if (count === 0) {
-                    return -100; // Bin이 없으면 최소 dB 반환
-                }
-
-                // 3. 평균 제곱 (Mean Square) 계산
-                const meanSquare = sumOfSquares / count;
-
-                // 4. RMS (Root Mean Square) 계산
-                const rmsAmplitude = Math.sqrt(meanSquare);
-                
-                // 5. RMS 진폭을 다시 dB로 변환 (20 * log10(RMS))
-                const rmsDecibels = rmsAmplitude > 1e-10 ? 20 * Math.log10(rmsAmplitude) : -100;
-
-                return rmsDecibels;
+                return count > 0 ? maxAmplitude : -100;
             }
             
-            // 이동 평균 필터 계산 함수
+            // 🔔 이동 평균 필터 계산 함수
             getSmoothedDifference(currentDiff) {
+                // 1. 현재 값 저장
                 this.diffHistory.push(currentDiff);
 
+                // 2. 히스토리 크기 유지
                 if (this.diffHistory.length > this.HISTORY_SIZE) {
-                    this.diffHistory.shift();    
+                    this.diffHistory.shift(); // 가장 오래된 값 제거
                 }
 
+                // 3. 평균 계산
                 const sum = this.diffHistory.reduce((a, b) => a + b, 0);
                 return sum / this.diffHistory.length;
             }
 
-            // 핵심 분석 로직
+            // 🔔 핵심 분석 로직
             analyzeAudioStep(time) {
                 if (!this.isRunning || !this.analyser) {
                     return;
-                }
-
-                // Calculate elapsed time
-                if (this.startTime !== null) {
-                    this.elapsedTime = Math.min((performance.now() - this.startTime) / 1000, 999); // Cap at 999 seconds
                 }
 
                 // 입력값 가져오기
@@ -449,10 +414,10 @@
                 this.analyser.getFloatFrequencyData(dataArray);
 
                 // 1. 주파수 계산
-                const fundamentalHz = (rpm / 60) * bladeCount;    
-                const peakHz = fundamentalHz * defectFactor;        
+                const fundamentalHz = (rpm / 60) * bladeCount; 
+                const peakHz = fundamentalHz * defectFactor;      
 
-                // 2. RMS 진폭 획득 (±3% 범위 적용)
+                // 2. 최대 진폭 획득 (±3% 범위 적용)
                 const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, dataArray, 0.03);
                 const peakAmplitude = this.getAmplitudeInRange(peakHz, binWidth, dataArray, 0.03);
                 
@@ -464,18 +429,18 @@
                 const diffClass = smoothedDifference > 0 ? 'db-diff-high' : 'db-diff-low';
 
                 this.resultElement.innerHTML = `
-                    <h3>✅ 실시간 dB 측정값 (최대 8000Hz 분석)</h3>
+                    <h3>✅ 실시간 dB 측정값</h3>
                     <p>
-                        **기본 주파수 (${bladeCount}배):** (${fundamentalHz.toFixed(2)} Hz) $\text{RMS}$ 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong>
+                        **기본 주파수 (${bladeCount}배):** (${fundamentalHz.toFixed(2)} Hz) 최대 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong>
                     </p>
                     <p>
-                        **결함 주파수 (${defectFactor}배):** (${peakHz.toFixed(2)} Hz) $\text{RMS}$ 진폭: <strong>${peakAmplitude.toFixed(2)} dB</strong>
+                        **결함 주파수 (${defectFactor}배):** (${peakHz.toFixed(2)} Hz) 최대 진폭: <strong>${peakAmplitude.toFixed(2)} dB</strong>
                     </p>
                     <hr style="margin: 10px 0; border: none; border-top: 1px dashed #ccc;">
                     <p style="font-size: 1.3em; font-weight: 600;">
-                        평균 $\text{dB}$ 차이 (결함 - 기본): <span class="${diffClass}">
+                        평균 dB 차이 (결함 - 기본): <span class="${diffClass}">
                             ${smoothedDifference.toFixed(2)} dB
-                        </span> (측정 시간: ${this.elapsedTime.toFixed(1)}초)
+                        </span>
                     </p>
                     <p style="font-size: 0.8em; color: #777; margin-top: 5px;">
                         (순간 $\text{dB}$ 차이: ${amplitudeDifference.toFixed(2)} dB)
@@ -493,4 +458,5 @@
         });
     </script>
 </body>
+</html>
 </html>
