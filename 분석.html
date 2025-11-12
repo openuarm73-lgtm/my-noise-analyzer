@@ -6,47 +6,35 @@
 <style>
 body {
     font-family: Arial, sans-serif;
-    background: #f7fafc;
-    margin: 0;
-    padding: 20px;
-}
-.container {
-    background: white;
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    max-width: 500px;
-    margin: auto;
-}
-h1 {
+    background-color: #f0f0f0;
     text-align: center;
+    padding: 20px;
 }
 button {
     margin: 5px;
     padding: 10px 15px;
     border: none;
     border-radius: 6px;
-    color: white;
     font-weight: bold;
+    color: white;
     cursor: pointer;
 }
 #connectBtn { background-color: #38a169; }
 #startBtn { background-color: #3182ce; }
 #stopBtn { background-color: #e53e3e; }
-#status { margin-top: 10px; font-weight: bold; }
-#timeElapsed { margin-top: 5px; color: #555; font-size: 0.9rem; }
+#status { margin-top: 15px; font-size: 1rem; }
+#elapsedTime { margin-top: 8px; color: #333; font-size: 0.9rem; }
 </style>
 </head>
 <body>
-<div class="container">
-    <h1>🎤 소리 분석기</h1>
-    <button id="connectBtn">마이크 연결</button>
-    <button id="startBtn" disabled>분석 시작</button>
-    <button id="stopBtn" disabled>중지</button>
+<h2>🎤 소리 분석기</h2>
 
-    <div id="status">대기 중...</div>
-    <div id="timeElapsed">🕒 경과: 0초</div>
-</div>
+<button id="connectBtn">마이크 연결</button>
+<button id="startBtn" disabled>분석 시작</button>
+<button id="stopBtn" disabled>중지</button>
+
+<div id="status">대기 중...</div>
+<div id="elapsedTime">🕒 경과: 0초</div>
 
 <script>
 let audioContext, analyser, source, stream;
@@ -54,11 +42,11 @@ let isRunning = false;
 let startTime = 0;
 let timer = null;
 
-const connectBtn = document.getElementById('connectBtn');
-const startBtn = document.getElementById('startBtn');
-const stopBtn = document.getElementById('stopBtn');
-const statusEl = document.getElementById('status');
-const timeEl = document.getElementById('timeElapsed');
+const connectBtn = document.getElementById("connectBtn");
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusEl = document.getElementById("status");
+const elapsedEl = document.getElementById("elapsedTime");
 
 connectBtn.onclick = async () => {
     try {
@@ -70,7 +58,7 @@ connectBtn.onclick = async () => {
 
         connectBtn.disabled = true;
         startBtn.disabled = false;
-        statusEl.textContent = "✅ 마이크 연결됨. 분석 시작 가능.";
+        statusEl.textContent = "✅ 마이크 연결 완료. 분석 시작 가능.";
     } catch (err) {
         statusEl.textContent = "❌ 마이크 연결 실패: " + err.message;
     }
@@ -97,7 +85,7 @@ stopBtn.onclick = () => {
 
 function updateElapsedTime() {
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    timeEl.textContent = `🕒 경과: ${elapsed}초`;
+    elapsedEl.textContent = `🕒 경과: ${elapsed}초`;
 }
 
 function analyze() {
@@ -105,7 +93,7 @@ function analyze() {
     const data = new Float32Array(analyser.frequencyBinCount);
     analyser.getFloatFrequencyData(data);
     const peak = Math.max(...data);
-    // 필요 시 여기에서 분석 로직 추가 가능
+    // 필요 시 분석 로직 추가 가능
     requestAnimationFrame(analyze);
 }
 </script>
