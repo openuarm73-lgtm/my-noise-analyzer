@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="소리분석기">
+    <title>소리 분석기 - 최대 피크 & 이동 평균</title>
+    <style>
+        /* CSS Styles: 모바일 및 웹뷰 환경에 최적화된 디자인 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        html {
+            font-size: 16px;
+        }
+        
+        body {
+            font-family: -apple-system,stems, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 100%;
+            width: 100%;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #4a5568;
+            margin-bottom: 25px;
+            font-size: 1.5rem;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .grid-input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 1rem;
+        }
+        
+        input[type="number"] {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1.1rem;
+        }
+        
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            padding: 16px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        #connectBtn {
+            grid-column: span 2;
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+        }
+        
+        #startButton {
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            color: white;
+        }
+        
+        #stopButton {
+            background: linear-gradient(135deg, #f56565, #e53e3e);
+            color: white;
+        }
+        
+        button:disabled {
+            background: #e2e8f0 !important;
+            color: #a0aec0 !important;
+            cursor: not-allowed !important;
+        }
+        
+        .status {
+            background: #f7fafc;
+            border-left: 4px solid #f56565;
+            padding: 16px;
+            margin-bottom: 20px;
+            border-radius: 0 10px 10px 0;
+            font-size: 0.95rem;
+        }
+        
+        .status.error { border-left-color: #f56565; background: #fed7d7; color: #c53030; }
+        .status.success { border-left-color: #48bb78; background: #f0fff4; color: #2f855a; }
+        .status.analyzing { border-left-color: #d69e2e; background: #fefcbf; color: #744210; }
+        
+        .results {
+            background: #f0fff4;
+            border: 2px solid #9ae6b4;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+
+        #currentResult {
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        
+        #currentResult h3 {
+            margin-top: 0;
+            color: #2d3748;
+        }
+
+        .db-diff-high {
+            color: #e53e3e; 
+            font-weight: bold;
+        }
+        .db-diff-low {
+            color: #38a169;
+            font-weight: bold;
+        }
+
+        .permission-help {
+            background: #ebf8ff;
+            border: 1px solid #90cdf4;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 15px;
+            font-size: 0.85rem;
+        }
+
+        #elapsedTime {
+            margin-top: 15px;
+            font-size: 1rem;
+            color: #2d3748;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 소리 분석기 (최대 피크 & 이동 평균)</h1>
+        
+        <div class="input-group">
+            <label for="rpmInput">1. RPM 값 입력:</label>
+            <input type="number" id="rpmInput" value="1500" min="300" max="10000" step="100" inputmode="numeric">
+        </div>
+
+        <div class="grid-input-group">
+            <div class="input-group">
+                <label for="bladeCountInput">2. 기본 주파수 배수 (블레이드 수 등):</label>
+                <input type="number" id="bladeCountInput" value="20" min="1" max="100" step="1" inputmode="numeric">
+            </div>
+            <div class="input-group">
+                <label for="defectFactorInput">3. 결함 주파수 배수:</label>
+                <input type="number" id="defectFactorInput" value="7" min="1" max="100" step="1" inputmode="numeric">
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button id="connectBtn">🎤 마이크 연결</button>
+            <button id="startButton" disabled>📊 분석 시작</button>
+            <button id="stopButton" disabled>⏹️ 분석 중지</button>
+        </div>
+        
+        <div class="status" id="status">
+            시작하려면 마이크 연결을 터치해주세요.
+        </div>
+        
+        <div class="results">
+            <h3>📈 $\text{dB}$ 차이 측정 & 통계 (이동 평균)</h3>
+            <div id="currentResult">
+                분석을 시작하면 여기에 결과가 표시됩니다.
+            </div>
+            <div id="elapsedTime">
+                경과 시간: 0초
+            </div>
+        </div>
+        
+        <div class="permission-help">
+            **✅ 분석 조건:** $\text{AGC}$ 등 자동 기능 **비활성화**. $\text{dB}$ 추출 방식 **범위 내 최대 피크** 사용. $\text{dB}$ 차이 값에 **이동 평균 필터** 적용 중입니다. **첨도와 파고율** 계산이 추가되었습니다.
+        </div>
+    </div>
+
+    <script>
+        class AudioAnalyzer {
+            constructor() {
+                // HTML 요소 참조
+                this.connectBtn = document.getElementById('connectBtn');
+                this.startButton = document.getElementById('startButton');
+                this.stopButton = document.getElementById('stopButton');
+                this.rpmInput = document.getElementById('rpmInput');
+                this.bladeCountInput = document.getElementById('bladeCountInput');
+                this.defectFactorInput = document.getElementById('defectFactorInput');
+                this.statusElement = document.getElementById('status');
+                this.resultElement = document.getElementById('currentResult');
+                this.elapsedTimeElement = document.getElementById('elapsedTime');
+
+                // Web Audio API 속성
+                this.audioContext = null;
+                this.analyser = null;
+                this.stream = null;
+                this.isRunning = false;
+                
+                // 🔔 이동 평균 필터 관련 속성
+                this.diffHistory = []; // dB 차이 값을 저장할 배열
+                this.kurtosisHistory = []; // 첨도 값을 저장할 배열
+                this.crestFactorHistory = []; // 파고율 값을 저장할 배열
+                this.HISTORY_SIZE = 20; // 약 0.33초의 히스토리
+                
+                // 시간 추적 속성
+                this.startTime = null;
+
+                // 이벤트 리스너 설정
+                this.connectBtn.addEventListener('click', () => this.connectMicrophone());
+                this.startButton.addEventListener('click', () => this.startAnalysis());
+                this.stopButton.addEventListener('click', () => this.stopAnalysis());
+                [this.rpmInput, this.bladeCountInput, this.defectFactorInput].forEach(input => {
+                    input.addEventListener('input', () => this.validateInputs());
+                });
+
+                this.checkMobileSupport();
+            }
+
+            checkMobileSupport() {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    this.updateStatus('이 브라우저는 마이크 접근을 지원하지 않습니다.', 'error');
+                    this.connectBtn.disabled = true;
+                }
+            }
+            
+            validateInputs() {
+                const rpm = parseInt(this.rpmInput.value);
+                const bladeCount = parseInt(this.bladeCountInput.value);
+                const defectFactor = parseInt(this.defectFactorInput.value);
+
+                let isValid = true;
+                let message = '';
+
+                if (isNaN(rpm) || rpm < 300 || rpm > 10000) {
+                    message = 'RPM 값은 300~10000 사이여야 합니다.';
+                    isValid = false;
+                } else if (isNaN(bladeCount) || bladeCount < 1) {
+                    message = '기본 주파수 배수(블레이드 수)는 1 이상이어야 합니다.';
+                    isValid = false;
+                } else if (isNaN(defectFactor) || defectFactor < 1) {
+                    message = '결함 주파수 배수는 1 이상이어야 합니다.';
+                    isValid = false;
+                }
+
+                if (isValid) {
+                    if (this.audioContext) {
+                        this.startButton.disabled = false;
+                        this.updateStatus('마이크 연결 성공. 분석을 시작할 수 있습니다.', 'success');
+                    }
+                } else {
+                    this.updateStatus(message, 'error');
+                    this.startButton.disabled = true;
+                }
+            }
+
+            updateStatus(message, type) {
+                this.statusElement.textContent = message;
+                this.statusElement.className = `status ${type}`;
+            }
+
+            async connectMicrophone() {
+                try {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    if (this.audioContext.state === 'suspended') {
+                         await this.audioContext.resume();
+                    }
+                    
+                    // AGC, 노이즈 억제, 에코 제거 비활성화
+                    this.stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            autoGainControl: false,
+                            noiseSuppression: false,
+                            echoCancellation: false
+                        }
+                    });
+
+                    const source = this.audioContext.createMediaStreamSource(this.stream);
+                    
+                    this.analyser = this.audioContext.createAnalyser();
+                    this.analyser.fftSize = 4096; 
+                    this.analyser.minDecibels = -100;
+                    this.analyser.maxDecibels = 0;
+                    
+                    source.connect(this.analyser);
+                    
+                    this.connectBtn.disabled = true;
+                    this.validateInputs(); 
+                } catch (err) {
+                    this.updateStatus(`마이크 연결 실패: ${err.message}`, 'error');
+                }
+            }
+
+            startAnalysis() {
+                if (this.isRunning) return;
+                
+                const rpm = parseInt(this.rpmInput.value);
+
+                this.isRunning = true;
+                this.startButton.disabled = true;
+                this.stopButton.disabled = false;
+                
+                // 분석 시작 시 히스토리 초기화
+                this.diffHistory = []; 
+                this.kurtosisHistory = [];
+                this.crestFactorHistory = [];
+                
+                this.startTime = performance.now(); // 시간 추적 시작
+                this.elapsedTimeElement.textContent = '경과 시간: 0초'; // 초기화
+                this.updateStatus(`분석 중... (목표 RPM: ${rpm})`, 'analyzing');
+
+                requestAnimationFrame((time) => this.analyzeAudioStep(time));
+            }
+
+            stopAnalysis() {
+                if (!this.isRunning) return;
+
+                this.isRunning = false;
+                
+                if (this.stream) {
+                    this.stream.getTracks().forEach(track => track.stop());
+                }
+                
+                if (this.audioContext) {
+                    this.audioContext.close().catch(e => console.error("AudioContext close error:", e));
+                    this.audioContext = null;
+                }
+
+                this.startButton.disabled = true; 
+                this.stopButton.disabled = true;
+                this.connectBtn.disabled = false; 
+                this.updateStatus("분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.", 'error');
+                this.elapsedTimeElement.textContent = '경과 시간: 0초'; // 시간 초기화
+            }
+
+            /**
+             * @private
+             * 목표 주파수(Hz)의 ±3% 범위에 해당하는 Bin 중 최대 진폭(dB)을 반환합니다.
+             */
+            getAmplitudeInRange(targetHz, binWidth, dataArray, rangePercent) {
+                const minHz = targetHz * (1 - rangePercent);
+                const maxHz = targetHz * (1 + rangePercent);
+
+                const minBin = Math.floor(minHz / binWidth);
+                const maxBin = Math.ceil(maxHz / binWidth);
+                
+                let maxAmplitude = -100; // dB 최소값으로 초기화
+                let count = 0;
+                
+                // minBin부터 maxBin까지 순회하며 최대 진폭(Max Peak)을 찾습니다.
+                for (let i = minBin; i <= maxBin; i++) {
+                    if (i >= 0 && i < dataArray.length) {
+                        if (dataArray[i] > maxAmplitude) {
+                            maxAmplitude = dataArray[i];
+                        }
+                        count++;
+                    }
+                }
+                
+                return count > 0 ? maxAmplitude : -100;
+            }
+            
+            // 🔔 이동 평균 필터 계산 함수
+            getSmoothedValue(currentValue, historyArray) {
+                // 1. 현재 값 저장
+                historyArray.push(currentValue);
+
+                // 2. 히스토리 크기 유지
+                if (historyArray.length > this.HISTORY_SIZE) {
+                    historyArray.shift(); // 가장 오래된 값 제거
+                }
+
+                // 3. 평균 계산
+                const sum = historyArray.reduce((a, b) => a + b, 0);
+                return sum / historyArray.length;
+            }
+
+            /**
+             * @private
+             * 시간 영역 데이터로부터 첨도(Kurtosis)와 파고율(Crest Factor)을 계산합니다.
+             * @param {Float32Array} dataArray - 시간 영역 데이터
+             * @returns {{kurtosis: number, crestFactor: number}}
+             */
+            calculateStats(dataArray) {
+                const N = dataArray.length;
+                if (N === 0) return { kurtosis: 0, crestFactor: 0 };
+                
+                // 1. 평균 (Mean, DC 오프셋)
+                const mean = dataArray.reduce((sum, val) => sum + val, 0) / N;
+
+                // 2. 분산 (Variance) 및 2차 모멘트 (Second Moment)
+                let sumOfSquaredDiffs = 0; // 2차 모멘트 (분산 계산용)
+                let sumOfQuarticDiffs = 0; // 4차 모멘트 (첨도 계산용)
+                let maxAbsValue = 0;
+
+                for (let i = 0; i < N; i++) {
+                    const diff = dataArray[i] - mean;
+                    const diff2 = diff * diff;
+                    const diff4 = diff2 * diff2;
+
+                    sumOfSquaredDiffs += diff2;
+                    sumOfQuarticDiffs += diff4;
+                    
+                    const absVal = Math.abs(dataArray[i]);
+                    if (absVal > maxAbsValue) {
+                        maxAbsValue = absVal;
+                    }
+                }
+
+                const variance = sumOfSquaredDiffs / N; // N으로 나누는 것은 표본 크기가 클 경우 거의 정확함
+                const rms = Math.sqrt(variance); // RMS (DC 성분 제거된 AC 값)
+
+                // 3. 첨도 (Kurtosis)
+                // Kurtosis = (4차 모멘트 / (2차 모멘트)^2) - 3 (정규 분포에 대한 초과 첨도)
+                let kurtosis = 0;
+                if (variance > 0) {
+                    const fourthMoment = sumOfQuarticDiffs / N;
+                    kurtosis = (fourthMoment / (variance * variance)) - 3; 
+                }
+
+                // 4. 파고율 (Crest Factor)
+                // Crest Factor = Peak Amplitude / RMS
+                let crestFactor = 0;
+                if (rms > 0) {
+                    // 파고율은 무차원 비율이므로, 시간 영역 데이터의 Peak 값과 RMS 값을 사용
+                    // Web Audio API의 시간 영역 데이터는 [-1, 1] 범위입니다.
+                    crestFactor = maxAbsValue / rms; 
+                }
+
+                return { kurtosis, crestFactor };
+            }
+
+            // 🔔 핵심 분석 로직
+            analyzeAudioStep(time) {
+                if (!this.isRunning || !this.analyser) {
+                    return;
+                }
+
+                // 경과 시간 업데이트
+                const elapsedSeconds = Math.floor((performance.now() - this.startTime) / 1000);
+                this.elapsedTimeElement.textContent = `경과 시간: ${elapsedSeconds}초`;
+
+                // 입력값 가져오기
+                const rpm = parseInt(this.rpmInput.value);
+                const bladeCount = parseInt(this.bladeCountInput.value);
+                const defectFactor = parseInt(this.defectFactorInput.value);
+
+                // --- 1. 주파수 영역 (dB) 분석 ---
+                const sampleRate = this.audioContext.sampleRate;
+                const binWidth = sampleRate / this.analyser.fftSize;
+                const freqDataArray = new Float32Array(this.analyser.frequencyBinCount);
+                this.analyser.getFloatFrequencyData(freqDataArray);
+
+                // 주파수 계산
+                const fundamentalHz = (rpm / 60) * bladeCount; 
+                const peakHz = fundamentalHz * defectFactor;      
+
+                // 최대 진폭 획득 (±3% 범위 적용)
+                const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, freqDataArray, 0.03);
+                const peakAmplitude = this.getAmplitudeInRange(peakHz, binWidth, freqDataArray, 0.03);
+                
+                // 진폭 차이 (dB) 계산 및 이동 평균 적용
+                const amplitudeDifference = peakAmplitude - fundamentalAmplitude;
+                const smoothedDifference = this.getSmoothedValue(amplitudeDifference, this.diffHistory);
+
+                // --- 2. 시간 영역 (첨도/파고율) 분석 ---
+                const timeDataArray = new Float32Array(this.analyser.fftSize);
+                this.analyser.getFloatTimeDomainData(timeDataArray);
+                
+                const { kurtosis, crestFactor } = this.calculateStats(timeDataArray);
+                
+                // 첨도와 파고율에 이동 평균 적용
+                const smoothedKurtosis = this.getSmoothedValue(kurtosis, this.kurtosisHistory);
+                const smoothedCrestFactor = this.getSmoothedValue(crestFactor, this.crestFactorHistory);
+
+
+                // 3. 결과 출력 포맷 설정
+                const diffClass = smoothedDifference > 0 ? 'db-diff-high' : 'db-diff-low';
+
+                this.resultElement.innerHTML = `
+                    <h3>✅ 주파수 영역 ($\text{dB}$) 측정값</h3>
+                    <p>
+                        **기본 주파수 (${bladeCount}배):** (${fundamentalHz.toFixed(2)} Hz) 최대 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong>
+                    </p>
+                    <p>
+                        **결함 주파수 (${defectFactor}배):** (${peakHz.toFixed(2)} Hz) 최대 진폭: <strong>${peakAmplitude.toFixed(2)} dB</strong>
+                    </p>
+                    <hr style="margin: 10px 0; border: none; border-top: 1px dashed #ccc;">
+                    <p style="font-size: 1.3em; font-weight: 600;">
+                        평균 $\text{dB}$ 차이 (결함 - 기본): <span class="${diffClass}">
+                            ${smoothedDifference.toFixed(2)} dB
+                        </span>
+                    </p>
+                    <p style="font-size: 0.8em; color: #777; margin-top: 5px;">
+                        (순간 $\text{dB}$ 차이: ${amplitudeDifference.toFixed(2)} dB)
+                    </p>
+
+                    <h3 style="margin-top: 20px;">✅ 시간 영역 (진동 통계) 측정값</h3>
+                    <p>
+                        **평균 첨도 (Kurtosis):** <strong>${smoothedKurtosis.toFixed(2)}</strong>
+                        <span style="font-size: 0.8em; color: #777;">(순간: ${kurtosis.toFixed(2)})</span>
+                    </p>
+                    <p>
+                        **평균 파고율 (Crest Factor):** <strong>${smoothedCrestFactor.toFixed(2)}</strong>
+                        <span style="font-size: 0.8em; color: #777;">(순간: ${crestFactor.toFixed(2)})</span>
+                    </p>
+                `;
+
+                // 4. 다음 분석 예약
+                requestAnimationFrame((time) => this.analyzeAudioStep(time));
+            }
+        }
+
+        // 페이지 로드 후 분석기 인스턴스 생성
+        document.addEventListener('DOMContentLoaded', () => {
+            new AudioAnalyzer();
+        });
+    </script>
+</body>
+</html>
