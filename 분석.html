@@ -408,6 +408,14 @@
 
                 this.isRunning = false;
                 
+                // 1. 총 경과 시간 계산
+                const endTime = performance.now();
+                const totalDurationMs = endTime - this.startTime;
+                const totalSeconds = Math.floor(totalDurationMs / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                const formattedDuration = `${minutes}분 ${seconds}초`; 
+
                 if (this.stream) {
                     this.stream.getTracks().forEach(track => track.stop());
                 }
@@ -421,7 +429,7 @@
                 this.stopButton.disabled = true;
                 this.connectBtn.disabled = false; 
                 
-                // 전체 평균 계산 및 출력
+                // 2. 전체 평균 계산 및 출력
                 const avgDiff = this.totalDataPoints > 0 ? this.totalDiffSum / this.totalDataPoints : 0;
                 const avgKurtosis = this.totalDataPoints > 0 ? this.totalKurtosisSum / this.totalDataPoints : 0;
                 const avgCrestFactor = this.totalDataPoints > 0 ? this.totalCrestFactorSum / this.totalDataPoints : 0;
@@ -442,6 +450,9 @@
                         **전체 평균 파고율 (Crest Factor):** <strong>${avgCrestFactor.toFixed(2)}</strong>
                     </p>
                     <hr style="margin: 10px 0; border: none; border-top: 1px dashed #ccc;">
+                    <p style="font-size: 1em; font-weight: 600; color: #3182ce;">
+                        **총 분석 경과 시간:** ${formattedDuration}
+                    </p>
                     <p style="font-size: 0.9em; color: #777;">
                         분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.
                     </p>
@@ -598,13 +609,11 @@
                 // 1-A. 필터 전 (Raw) 기본 주파수 진폭 측정
                 const freqDataArrayRaw = new Float32Array(this.analyserRaw.frequencyBinCount);
                 this.analyserRaw.getFloatFrequencyData(freqDataArrayRaw);
-                // raw Analyser는 필터링 전 신호를 분석하므로, 기본 주파수의 dB는 실제 노이즈를 반영합니다.
                 const fundamentalAmplitudeRaw = this.getAmplitudeInRange(fundamentalHz, binWidth, freqDataArrayRaw, 0.03);
                 
                 // 1-B. 필터 후 (Filtered) 결함 주파수 진폭 측정
                 const freqDataArrayFiltered = new Float32Array(this.analyser.frequencyBinCount);
                 this.analyser.getFloatFrequencyData(freqDataArrayFiltered);
-                // filtered Analyser는 필터링 후 신호를 분석하므로, 결함 주파수의 dB는 노이즈가 제거된 순수 결함 에너지를 반영합니다.
                 const peakAmplitudeFiltered = this.getAmplitudeInRange(peakHz, binWidth, freqDataArrayFiltered, 0.03);
                 
                 // 진폭 차이 (dB) 계산
@@ -683,6 +692,10 @@
         // 페이지 로드 후 분석기 인스턴스 생성
         document.addEventListener('DOMContentLoaded', () => {
             new AudioAnalyzer();
+        });
+    </script>
+</body>
+</html>
         });
     </script>
 </body>
