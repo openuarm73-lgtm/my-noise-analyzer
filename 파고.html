@@ -206,7 +206,7 @@
         </div>
         
         <div class="results">
-            <h3>📈 $\text{dB}$ 차이 측정 & 통계 (이동 평균)</h3>
+            <h3>📈 dB 차이 측정 & 통계</h3>
             <div id="currentResult">
                 분석을 시작하면 여기에 결과가 표시됩니다.
             </div>
@@ -216,7 +216,7 @@
         </div>
         
         <div class="permission-help">
-            **✅ 분석 조건:** $\text{AGC}$ 등 자동 기능 **비활성화**. $\text{dB}$ 추출 방식 **범위 내 최대 피크** 사용. $\text{dB}$ 차이 값에 **이동 평균 필터** 적용 중입니다. **첨도와 파고율** 계산이 추가되었습니다.
+            **✅ 분석 조건:** $\text{AGC}$ 등 자동 기능 **비활성화**. $\text{dB}$ 추출 방식 **범위 내 최대 피크** 사용. $\text{dB}$ 차이 값에 **이동 평균 필터** 적용 중입니다. **첨도와 파고율** 계산이 추가되었습니다. **분석 중지 시 전체 평균이 표시**됩니다.
         </div>
     </div>
 
@@ -240,11 +240,17 @@
                 this.stream = null;
                 this.isRunning = false;
                 
-                // 🔔 이동 평균 필터 관련 속성
-                this.diffHistory = []; // dB 차이 값을 저장할 배열
-                this.kurtosisHistory = []; // 첨도 값을 저장할 배열
-                this.crestFactorHistory = []; // 파고율 값을 저장할 배열
-                this.HISTORY_SIZE = 20; // 약 0.33초의 히스토리
+                // 🔔 이동 평균 필터 관련 속성 (HISTORY_SIZE 절반으로 단축: 20 -> 10)
+                this.diffHistory = []; 
+                this.kurtosisHistory = []; 
+                this.crestFactorHistory = []; 
+                this.HISTORY_SIZE = 10; 
+                
+                // 🔔 전체 평균 누적 속성 추가
+                this.totalDiffSum = 0;
+                this.totalKurtosisSum = 0;
+                this.totalCrestFactorSum = 0;
+                this.totalDataPoints = 0; // 누적된 데이터 포인트 개수
                 
                 // 시간 추적 속성
                 this.startTime = null;
@@ -321,7 +327,8 @@
                     const source = this.audioContext.createMediaStreamSource(this.stream);
                     
                     this.analyser = this.audioContext.createAnalyser();
-                    this.analyser.fftSize = 4096; 
+                    // 🔔 FFT Size 절반으로 단축 (4096 -> 2048)
+                    this.analyser.fftSize = 2048; 
                     this.analyser.minDecibels = -100;
                     this.analyser.maxDecibels = 0;
                     
@@ -343,10 +350,15 @@
                 this.startButton.disabled = true;
                 this.stopButton.disabled = false;
                 
-                // 분석 시작 시 히스토리 초기화
+                // 분석 시작 시 히스토리 및 누적값 초기화
                 this.diffHistory = []; 
                 this.kurtosisHistory = [];
                 this.crestFactorHistory = [];
+
+                this.totalDiffSum = 0;
+                this.totalKurtosisSum = 0;
+                this.totalCrestFactorSum = 0;
+                this.totalDataPoints = 0;
                 
                 this.startTime = performance.now(); // 시간 추적 시작
                 this.elapsedTimeElement.textContent = '경과 시간: 0초'; // 초기화
@@ -372,7 +384,35 @@
                 this.startButton.disabled = true; 
                 this.stopButton.disabled = true;
                 this.connectBtn.disabled = false; 
-                this.updateStatus("분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.", 'error');
+                
+                // 🔔 전체 평균 계산 및 출력
+                const avgDiff = this.totalDataPoints > 0 ? this.totalDiffSum / this.totalDataPoints : 0;
+                const avgKurtosis = this.totalDataPoints > 0 ? this.totalKurtosisSum / this.totalDataPoints : 0;
+                const avgCrestFactor = this.totalDataPoints > 0 ? this.totalCrestFactorSum / this.totalDataPoints : 0;
+                
+                const diffClass = avgDiff > 0 ? 'db-diff-high' : 'db-diff-low';
+
+                this.resultElement.innerHTML = `
+                    <h3 style="color: #48bb78;">✅ 분석 최종 결과 (총 ${this.totalDataPoints}회 스캔)</h3>
+                    <p style="font-size: 1.3em; font-weight: 600;">
+                        전체 평균 $\text{dB}$ 차이 (결함 - 기본): <span class="${diffClass}">
+                            ${avgDiff.toFixed(2)} dB
+                        </span>
+                    </p>
+                    <p>
+                        **전체 평균 첨도 (Kurtosis):** <strong>${avgKurtosis.toFixed(2)}</strong>
+                    </p>
+                    <p>
+                        **전체 평균 파고율 (Crest Factor):** <strong>${avgCrestFactor.toFixed(2)}</strong>
+                    </p>
+                    <hr style="margin: 10px 0; border: none; border-top: 1px dashed #ccc;">
+                    <p style="font-size: 0.9em; color: #777;">
+                        분석이 중지되었으며, 마이크가 해제되었습니다. 다시 연결해주세요.
+                    </p>
+                `;
+
+
+                this.updateStatus("분석이 중지되었으며, 최종 평균 결과가 표시되었습니다.", 'error');
                 this.elapsedTimeElement.textContent = '경과 시간: 0초'; // 시간 초기화
             }
 
@@ -431,9 +471,9 @@
                 // 1. 평균 (Mean, DC 오프셋)
                 const mean = dataArray.reduce((sum, val) => sum + val, 0) / N;
 
-                // 2. 분산 (Variance) 및 2차 모멘트 (Second Moment)
-                let sumOfSquaredDiffs = 0; // 2차 모멘트 (분산 계산용)
-                let sumOfQuarticDiffs = 0; // 4차 모멘트 (첨도 계산용)
+                // 2. 분산 (Variance) 및 4차 모멘트
+                let sumOfSquaredDiffs = 0; 
+                let sumOfQuarticDiffs = 0; 
                 let maxAbsValue = 0;
 
                 for (let i = 0; i < N; i++) {
@@ -450,23 +490,20 @@
                     }
                 }
 
-                const variance = sumOfSquaredDiffs / N; // N으로 나누는 것은 표본 크기가 클 경우 거의 정확함
-                const rms = Math.sqrt(variance); // RMS (DC 성분 제거된 AC 값)
+                const variance = sumOfSquaredDiffs / N; 
+                const rms = Math.sqrt(variance); 
 
                 // 3. 첨도 (Kurtosis)
-                // Kurtosis = (4차 모멘트 / (2차 모멘트)^2) - 3 (정규 분포에 대한 초과 첨도)
                 let kurtosis = 0;
                 if (variance > 0) {
                     const fourthMoment = sumOfQuarticDiffs / N;
+                    // 초과 첨도 (Excess Kurtosis) 계산
                     kurtosis = (fourthMoment / (variance * variance)) - 3; 
                 }
 
                 // 4. 파고율 (Crest Factor)
-                // Crest Factor = Peak Amplitude / RMS
                 let crestFactor = 0;
                 if (rms > 0) {
-                    // 파고율은 무차원 비율이므로, 시간 영역 데이터의 Peak 값과 RMS 값을 사용
-                    // Web Audio API의 시간 영역 데이터는 [-1, 1] 범위입니다.
                     crestFactor = maxAbsValue / rms; 
                 }
 
@@ -502,26 +539,32 @@
                 const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, freqDataArray, 0.03);
                 const peakAmplitude = this.getAmplitudeInRange(peakHz, binWidth, freqDataArray, 0.03);
                 
-                // 진폭 차이 (dB) 계산 및 이동 평균 적용
+                // 진폭 차이 (dB) 계산
                 const amplitudeDifference = peakAmplitude - fundamentalAmplitude;
-                const smoothedDifference = this.getSmoothedValue(amplitudeDifference, this.diffHistory);
-
+                
                 // --- 2. 시간 영역 (첨도/파고율) 분석 ---
                 const timeDataArray = new Float32Array(this.analyser.fftSize);
                 this.analyser.getFloatTimeDomainData(timeDataArray);
                 
                 const { kurtosis, crestFactor } = this.calculateStats(timeDataArray);
                 
-                // 첨도와 파고율에 이동 평균 적용
+                // 🔔 전체 누적 합계 업데이트
+                this.totalDiffSum += amplitudeDifference;
+                this.totalKurtosisSum += kurtosis;
+                this.totalCrestFactorSum += crestFactor;
+                this.totalDataPoints++; // 데이터 포인트 카운트 증가
+
+                // 3. 이동 평균 적용 (실시간 출력용)
+                const smoothedDifference = this.getSmoothedValue(amplitudeDifference, this.diffHistory);
                 const smoothedKurtosis = this.getSmoothedValue(kurtosis, this.kurtosisHistory);
                 const smoothedCrestFactor = this.getSmoothedValue(crestFactor, this.crestFactorHistory);
 
 
-                // 3. 결과 출력 포맷 설정
+                // 4. 실시간 결과 출력 포맷 설정
                 const diffClass = smoothedDifference > 0 ? 'db-diff-high' : 'db-diff-low';
 
                 this.resultElement.innerHTML = `
-                    <h3>✅ 주파수 영역 ($\text{dB}$) 측정값</h3>
+                    <h3>✅ 주파수 영역 (dB) 측정값</h3>
                     <p>
                         **기본 주파수 (${bladeCount}배):** (${fundamentalHz.toFixed(2)} Hz) 최대 진폭: <strong>${fundamentalAmplitude.toFixed(2)} dB</strong>
                     </p>
@@ -549,7 +592,7 @@
                     </p>
                 `;
 
-                // 4. 다음 분석 예약
+                // 5. 다음 분석 예약
                 requestAnimationFrame((time) => this.analyzeAudioStep(time));
             }
         }
