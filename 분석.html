@@ -185,7 +185,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎵 소리 분석기 (최대 피크 & 이동 평균)</h1>
+        <h1>🎵 소리 분석기 (필터링된 피크 & 통계)</h1>
         
         <div class="input-group">
             <label for="rpmInput">1. RPM 값 입력:</label>
@@ -203,6 +203,11 @@
             </div>
         </div>
         
+        <div class="input-group">
+            <label for="filterBandwidthInput">4. 필터 대역폭 (Hz):</label>
+            <input type="number" id="filterBandwidthInput" value="100" min="1" max="5000" step="10" inputmode="numeric">
+        </div>
+        
         <div class="button-group">
             <button id="connectBtn">🎤 마이크 연결</button>
             <button id="startButton" disabled>📊 분석 시작</button>
@@ -214,7 +219,7 @@
         </div>
         
         <div class="results">
-            <h3>📈 dB 차이 측정 & 통계</h3>
+            <h3>📈 dB 차이 측정 & 필터링된 통계</h3>
             <div id="currentResult">
                 분석을 시작하면 여기에 결과가 표시됩니다.
             </div>
@@ -224,7 +229,7 @@
         </div>
         
         <div class="permission-help">
-            **✅ 분석 조건:** $\text{AGC}$ 등 자동 기능 **비활성화**. $\text{dB}$ 추출 방식 **범위 내 최대 피크** 사용. **$\text{FFT}$ 계산은 빠르게 하지만, 화면 업데이트는 0.2초마다 한 번만** 하여 휴대폰 부하를 낮췄습니다. 분석 중지 시 전체 평균이 표시됩니다.
+            **✅ 분석 조건:** $\text{AGC}$ 비활성화. **$\text{결함 주파수}$를 중심으로 $\text{밴드패스 필터}$가 적용되어 $\text{파고율/첨도}$가 계산**됩니다. 이 방식은 $\text{기본 주파수}$와 배경 소음을 제거하고 결함 충격에 집중합니다.
         </div>
         
         <button id="explainStatsBtn">❓ 첨도/파고율 설명 보기</button>
@@ -241,12 +246,14 @@
                 this.rpmInput = document.getElementById('rpmInput');
                 this.bladeCountInput = document.getElementById('bladeCountInput');
                 this.defectFactorInput = document.getElementById('defectFactorInput');
+                this.filterBandwidthInput = document.getElementById('filterBandwidthInput'); 
                 this.statusElement = document.getElementById('status');
                 this.resultElement = document.getElementById('currentResult');
                 this.elapsedTimeElement = document.getElementById('elapsedTime');
 
                 // Web Audio API 속성
                 this.audioContext = null;
+                this.filterNode = null; 
                 this.analyser = null;
                 this.stream = null;
                 this.isRunning = false;
@@ -266,7 +273,7 @@
                 // 시간 추적 속성
                 this.startTime = null;
 
-                // 🔔 화면 업데이트 주기 속성 추가
+                // 화면 업데이트 주기 속성
                 this.updateInterval = 200; // 200ms (0.2초) 마다 업데이트
                 this.lastUpdateTime = 0;
 
@@ -275,7 +282,7 @@
                 this.startButton.addEventListener('click', () => this.startAnalysis());
                 this.stopButton.addEventListener('click', () => this.stopAnalysis());
                 this.explainStatsBtn.addEventListener('click', () => this.showStatsExplanation()); 
-                [this.rpmInput, this.bladeCountInput, this.defectFactorInput].forEach(input => {
+                [this.rpmInput, this.bladeCountInput, this.defectFactorInput, this.filterBandwidthInput].forEach(input => {
                     input.addEventListener('input', () => this.validateInputs());
                 });
 
@@ -293,6 +300,7 @@
                 const rpm = parseInt(this.rpmInput.value);
                 const bladeCount = parseInt(this.bladeCountInput.value);
                 const defectFactor = parseInt(this.defectFactorInput.value);
+                const bandwidth = parseInt(this.filterBandwidthInput.value); 
 
                 let isValid = true;
                 let message = '';
@@ -305,6 +313,9 @@
                     isValid = false;
                 } else if (isNaN(defectFactor) || defectFactor < 1) {
                     message = '결함 주파수 배수는 1 이상이어야 합니다.';
+                    isValid = false;
+                } else if (isNaN(bandwidth) || bandwidth < 1) {
+                    message = '필터 대역폭은 1 Hz 이상이어야 합니다.';
                     isValid = false;
                 }
 
@@ -342,13 +353,16 @@
 
                     const source = this.audioContext.createMediaStreamSource(this.stream);
                     
+                    this.filterNode = this.audioContext.createBiquadFilter(); 
                     this.analyser = this.audioContext.createAnalyser();
-                    // FFT Size 4096 유지
+                    
+                    // 연결: Source -> Filter -> Analyser
+                    source.connect(this.filterNode);
+                    this.filterNode.connect(this.analyser); 
+
                     this.analyser.fftSize = 4096; 
                     this.analyser.minDecibels = -100;
                     this.analyser.maxDecibels = 0;
-                    
-                    source.connect(this.analyser);
                     
                     this.connectBtn.disabled = true;
                     this.validateInputs(); 
@@ -376,9 +390,9 @@
                 this.totalCrestFactorSum = 0;
                 this.totalDataPoints = 0;
                 
-                this.startTime = performance.now(); // 시간 추적 시작
-                this.lastUpdateTime = this.startTime; // 화면 업데이트 시간 초기화
-                this.elapsedTimeElement.textContent = '경과 시간: 0초'; // 초기화
+                this.startTime = performance.now(); 
+                this.lastUpdateTime = this.startTime; 
+                this.elapsedTimeElement.textContent = '경과 시간: 0초'; 
                 this.updateStatus(`분석 중... (목표 RPM: ${rpm})`, 'analyzing');
 
                 requestAnimationFrame((time) => this.analyzeAudioStep(time));
@@ -554,25 +568,38 @@
                 const rpm = parseInt(this.rpmInput.value);
                 const bladeCount = parseInt(this.bladeCountInput.value);
                 const defectFactor = parseInt(this.defectFactorInput.value);
+                const bandwidth = parseInt(this.filterBandwidthInput.value); 
 
-                // --- 1. 주파수 영역 (dB) 분석 ---
+                // --- 0. 필터 설정 (결함 주파수 중심 필터) ---
                 const sampleRate = this.audioContext.sampleRate;
+                const fundamentalHz = (rpm / 60) * bladeCount; 
+                const peakHz = fundamentalHz * defectFactor;      
+
+                if (this.filterNode && bandwidth > 0 && peakHz > 0) {
+                    const Q = peakHz / bandwidth; 
+                    const currentContextTime = this.audioContext.currentTime;
+                    
+                    this.filterNode.type = 'bandpass';
+                    // 결함 주파수를 필터의 중심 주파수로 설정
+                    this.filterNode.frequency.setValueAtTime(peakHz, currentContextTime); 
+                    // Q 값 설정
+                    this.filterNode.Q.setValueAtTime(Q, currentContextTime);
+                }
+
+                // --- 1. 주파수 영역 (dB) 분석 (필터링된 신호의 dB) ---
                 const binWidth = sampleRate / this.analyser.fftSize;
                 const freqDataArray = new Float32Array(this.analyser.frequencyBinCount);
                 this.analyser.getFloatFrequencyData(freqDataArray);
 
-                // 주파수 계산
-                const fundamentalHz = (rpm / 60) * bladeCount; 
-                const peakHz = fundamentalHz * defectFactor;      
-
                 // 최대 진폭 획득 (±3% 범위 적용)
+                // 필터를 통과했지만, 여전히 해당 대역에서 피크를 찾습니다.
                 const fundamentalAmplitude = this.getAmplitudeInRange(fundamentalHz, binWidth, freqDataArray, 0.03);
                 const peakAmplitude = this.getAmplitudeInRange(peakHz, binWidth, freqDataArray, 0.03);
                 
                 // 진폭 차이 (dB) 계산
                 const amplitudeDifference = peakAmplitude - fundamentalAmplitude;
                 
-                // --- 2. 시간 영역 (첨도/파고율) 분석 ---
+                // --- 2. 시간 영역 (첨도/파고율) 분석 (필터링된 신호의 통계) ---
                 const timeDataArray = new Float32Array(this.analyser.fftSize);
                 this.analyser.getFloatTimeDomainData(timeDataArray);
                 
@@ -618,7 +645,10 @@
                             (순간 $\text{dB}$ 차이: ${amplitudeDifference.toFixed(2)} dB)
                         </p>
 
-                        <h3 style="margin-top: 20px;">✅ 시간 영역 (진동 통계) 측정값</h3>
+                        <h3 style="margin-top: 20px;">✅ 시간 영역 (필터링된 통계) 측정값</h3>
+                        <p>
+                            **필터 중심 주파수:** ${peakHz.toFixed(2)} Hz (대역폭: ${bandwidth} Hz)
+                        </p>
                         <p>
                             **평균 첨도 (Kurtosis):** <strong>${smoothedKurtosis.toFixed(2)}</strong>
                             <span style="font-size: 0.8em; color: #777;">(순간: ${kurtosis.toFixed(2)})</span>
@@ -628,10 +658,10 @@
                             <span style="font-size: 0.8em; color: #777;">(순간: ${crestFactor.toFixed(2)})</span>
                         </p>
                     `;
-                    this.lastUpdateTime = now; // 화면 업데이트 시간 갱신
+                    this.lastUpdateTime = now; 
                 }
                 
-                // 5. 다음 분석 예약 (rAF는 계속 빠르게 호출)
+                // 5. 다음 분석 예약 
                 requestAnimationFrame((time) => this.analyzeAudioStep(time));
             }
         }
@@ -639,6 +669,10 @@
         // 페이지 로드 후 분석기 인스턴스 생성
         document.addEventListener('DOMContentLoaded', () => {
             new AudioAnalyzer();
+        });
+    </script>
+</body>
+</html>
         });
     </script>
 </body>
