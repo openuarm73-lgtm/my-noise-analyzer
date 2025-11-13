@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>펠릿타이저 진단 도구 사용 매뉴얼 (RPM 보정)</title>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', 'Segoe UI', Roboto, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9f9f9;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #4A5568;
+            text-align: center;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #764ba2;
+            margin-top: 30px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        h3 {
+            color: #4299e1;
+            margin-top: 20px;
+            font-size: 1.25rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.95rem;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+        th {
+            background-color: #f7fafc;
+            color: #2d3748;
+            font-weight: 600;
+        }
+        tr:nth-child(even) {
+            background-color: #fcfcfc;
+        }
+        .highlight {
+            background-color: #fff9e6;
+            padding: 15px;
+            border-left: 5px solid #ffc107;
+            margin-top: 15px;
+            border-radius: 5px;
+        }
+        .tip {
+            color: #38a169;
+            font-weight: bold;
+        }
+        ol {
+            margin-left: 20px;
+            padding-left: 0;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        code {
+            background-color: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: Consolas, monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚙️ 펠릿타이저 진단 도구 사용 매뉴얼 (\(\text{RPM}\) 보정)</h1>
+        <p>이 도구는 **\(\text{RPM}\) 보정 포락선 분석** 기법을 사용하여 펠릿타이저 블레이드의 압력 상태와 마모도를 \(\text{RPM}\) 변화에 관계없이 일관성 있게 진단합니다.</p>
+
+        <h2>1. 입력 항목 상세 설명 (1~7)</h2>
+        <p>분석의 정확도를 위해 아래 7가지 항목에 정확한 값을 입력해야 합니다.</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 5%;">#</th>
+                    <th style="width: 25%;">항목명</th>
+                    <th style="width: 70%;">역할 및 중요성</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1.</td>
+                    <td>현재 측정 \(\text{RPM}\) 값</td>
+                    <td>펠릿타이저가 현재 회전하는 실제 속도입니다. 이 값은 모든 분석 주파수(<span class="tip">기본 주파수, 결함 주파수</span>)를 계산하는 데 사용되며, \(\text{RPM}\) 보정의 핵심 기준입니다.</td>
+                </tr>
+                <tr>
+                    <td>2.</td>
+                    <td>기본 주파수 배수 (블레이드 수)</td>
+                    <td>롤러(블레이드)의 개수를 입력합니다. 이 값은 기계의 **정상적인 반복 충격 주기**인 기본 주파수(\(F_{\text{basic}}\))를 정의하며, <span class="tip">결함 신호의 비교 기준 레벨</span>을 추출하는 데 사용됩니다.</td>
+                </tr>
+                <tr>
+                    <td>3.</td>
+                    <td>결함 주파수 배수 (예: 7)</td>
+                    <td>관찰된 특정 결함의 특징을 찾아내기 위한 배수입니다. 이 값은 <span class="tip">결함 신호의 중심 주파수</span>(\(F_{\text{defect}}\) 또는 \(7 \times F_{\text{basic}}\))를 지정합니다.</td>
+                </tr>
+                <tr>
+                    <td>4.</td>
+                    <td>기준 \(\text{RPM}\) (임계치 설정 시점)</td>
+                    <td>\(\text{RPM}\) 보정의 핵심 기준점입니다. 임계값을 설정했던 과거의 안정적인 \(\text{RPM}\) 값을 입력합니다. 측정된 \(\text{dB}\) 값이 이 기준 \(\text{RPM}\)에서 측정했을 때의 값으로 환원됩니다.</td>
+                </tr>
+                <tr>
+                    <td>5.</td>
+                    <td>결함 하모닉 수 (1~10)</td>
+                    <td>결함 주파수(\(F_{\text{defect}}\)) 외에 그 정수 배수(<span class="tip">고조파, Harmonics</span>)를 몇 개까지 합산하여 총 결함 에너지를 계산할지 지정합니다.</td>
+                </tr>
+                <tr>
+                    <td>6.</td>
+                    <td>공진(울림) 주파수 대역 (\(\text{Hz}\))</td>
+                    <td>포락선 분석을 위한 **대역 통과 필터**의 최소/최대 주파수(\(\text{Hz}\))입니다. <span class="tip">기계 본체가 가장 잘 울리는 고주파 대역</span>을 설정하여 충격 신호만 추출합니다.</td>
+                </tr>
+                <tr>
+                    <td>7.</td>
+                    <td>포락선 저주파 필터 컷오프 (\(\text{Hz}\))</td>
+                    <td>정류된 신호에서 충격의 리듬(Envelope)만 추출하는 **저주파 필터**의 차단 주파수(\(\text{Hz}\))입니다. 결함 주파수(\(F_{\text{defect}}\))보다 충분히 높은 값으로 설정합니다.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>2. 펠릿타이저 진단 사용 메뉴얼 (4단계)</h2>
+
+        <div class="highlight">
+            <h3>✅ 핵심 원리: \(\text{RPM}\) 보정된 결함 \(\text{dB}\)와 기본 \(\text{dB}\)의 차이 분석</h3>
+            $$\text{보정된 } \text{dB} \text{ 차이} = \left( \text{기준 } \text{RPM} \text{으로 환원된 결함 신호의 진폭} \right) - \left( \text{기계의 정상 소음 진폭} \right)$$
+        </div>
+
+        <ol>
+            <li>
+                <h3>단계 1: 매개변수 확인 및 입력</h3>
+                <ul>
+                    <li>1. **\(\text{RPM}\) 측정:** 현재 작동 중인 펠릿타이저의 **\(\text{RPM}\)** 값을 측정합니다.</li>
+                    <li>2. **기준 \(\text{RPM}\) 설정:** 4번 항목에 <span class="tip">정상/안정 상태의 기준 \(\text{RPM}\)</span>을 정확히 입력합니다.</li>
+                    <li>3. **물리적 값 입력:** 2번(블레이드 수), 3번(결함 배수), 6번(공진 대역) 등 기계에 고유한 설정값을 확인 후 입력합니다.</li>
+                </ul>
+            </li>
+
+            <li>
+                <h3>단계 2: 마이크 연결 및 배치</h3>
+                <ul>
+                    <li>1. **[🎤 마이크 연결]** 버튼을 클릭하여 브라우저의 마이크 사용 권한을 허용합니다. (상태: "마이크 연결됨" 확인)</li>
+                    <li>2. 스마트폰 또는 외부 마이크를 펠릿타이저의 **충격 진동이 잘 전달되는 지점**에 단단히 고정합니다.</li>
+                </ul>
+            </li>
+
+            <li>
+                <h3>단계 3: 녹음 및 분석 실행</h3>
+                <ul>
+                    <li>1. **[🎙️ 녹음 시작]** 버튼을 클릭하여 녹음을 시작합니다.</li>
+                    <li>2. **최소 5초 이상** 녹음하여 안정적인 통계를 확보합니다.</li>
+                    <li>3. **[⏹️ 녹음 중지 & 분석]** 버튼을 클릭합니다.</li>
+                    <li>4. 분석이 시작되면 실시간으로 **'평균 \(\text{dB}\) 차이'**가 화면 중앙에 가장 크게 강조되어 표시되는 것을 확인합니다.</li>
+                </ul>
+            </li>
+
+            <li>
+                <h3>단계 4: 진단 결과 해석</h3>
+                <p>화면에 표시되는 최종 결과를 기준으로 펠릿타이저의 상태를 진단합니다.</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">핵심 지표</th>
+                            <th style="width: 35%;">임계값 (권장)</th>
+                            <th style="width: 35%;">진단 상태 및 조치</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td rowspan="4">평균 \(\text{dB}\) 차이<br>(가장 강조되는 지표)</td>
+                            <td>**10 \(\text{dB}\) 초과**</td>
+                            <td style="color: #e53e3e; font-weight: bold;">🚨 위험: 과도한 압력 또는 심각한 결함. 즉시 점검 필요.</td>
+                        </tr>
+                        <tr>
+                            <td>**5 이상 - 10 이하 db**</td>
+                            <td style="color: #d69e2e; font-weight: bold;">⚠️ 경고: 블레이드 압력이 높거나 마모가 가속되고 있음. 추이 관찰.</td>
+                        </tr>
+                        <tr>
+                            <td>**1 이상 - 5 미만db**</td>
+                            <td style="color: #38a169; font-weight: bold;">✅ 정상: 적절한 압력 상태.</td>
+                        </tr>
+                        <tr>
+                            <td>**1 dB 미만**</td>
+                            <td style="color: #3182ce; font-weight: bold;">🔵 점검 필요: 블레이드 마모로 인한 절삭력 상실 의심. 수명 종료 확인.</td>
+                        </tr>
+                        <tr>
+                            <td>평균 첨도 (Kurtosis)</td>
+                            <td>**3 초과**</td>
+                            <td>충격성이 날카로움. 기계적 충돌이나 초기 결함 발생 가능성이 높음.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </li>
+        </ol>
+
+        <p style="margin-top: 30px; text-align: center; font-size: 0.9rem; color: #718096;">본 매뉴얼은 분석 도구의 사용을 돕기 위해 작성되었으며, 실제 진단은 현장 상황을 종합적으로 고려해야 합니다.</p>
+    </div>
+</body>
+</html>
