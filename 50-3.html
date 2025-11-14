@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>소리 분석기 메뉴얼</title>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:linear-gradient(135deg,#2b6cb0,#805ad5);color:#222;min-height:100vh;padding:18px}
+        .container{max-width:1100px;margin:0 auto;background:#fff;border-radius:12px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,0.18)}
+        h1{font-size:1.2rem;text-align:center;margin-bottom:12px}
+        h2{font-size:1.1rem;margin-top:20px;margin-bottom:10px;color:#1a3c6e}
+        h3{font-size:1rem;margin-top:15px;margin-bottom:8px;color:#2b6cb0}
+        p{font-size:0.95rem;line-height:1.6;margin-bottom:10px}
+        ul, ol{font-size:0.95rem;line-height:1.6;margin-bottom:10px;padding-left:20px}
+        li{margin-bottom:6px}
+        .panel{background:#fbfbff;padding:12px;border-radius:10px;margin-bottom:12px}
+        .small{font-size:0.85rem;color:#444}
+        .muted{color:#666;font-size:0.9rem}
+        table{width:100%;border-collapse:collapse;margin-top:8px}
+        th, td{padding:6px;border-bottom:1px solid #eee;text-align:left;font-size:0.9rem}
+        th{background:#f7f7f7}
+        .badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700;color:#fff;font-size:0.85rem}
+        .ok{background:#38a169} .warn{background:#dd6b20} .bad{background:#e53e3e}
+        @media(max-width:1000px){.container{padding:12px}}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔊 소리 분석기 메뉴얼</h1>
+        <div class="panel">
+            <h2>소리 분석기 개요</h2>
+            <p>소리 분석기는 마이크를 통해 입력된 오디오 신호를 실시간으로 분석하여 주파수 스펙트럼, 고조파, 통계 지표를 제공하는 도구입니다. 특히, 기계의 결함 주파수(7×) 및 확장된 14× 판정을 포함하여 이상 상태를 자동으로 감지하고 경보를 울릴 수 있습니다. 이 메뉴얼은 도구의 주요 기능과 사용 방법을 설명합니다.</p>
+        </div>
+
+        <div class="panel">
+            <h2>주요 기능</h2>
+            <h3>1. 실시간 주파수 스펙트럼 분석</h3>
+            <p>오디오 신호를 FFT(Fast Fourier Transform)를 통해 주파수 영역으로 변환하여 실시간 스펙트럼을 표시합니다. 마우스를 그래프 위로 이동하면 특정 주파수와 진폭(dB)을 확인할 수 있습니다.</p>
+            <ul>
+                <li><b>샘플레이트 및 FFT 정보</b>: 샘플레이트(Hz)와 FFT 크기를 표시하며, 빈당 주파수(Hz/bin)를 제공합니다.</li>
+                <li><b>그래프 표시</b>: 기본 주파수(노란색 선), 결함 주파수(빨간색 선), 고조파(노란색 점)를 시각화합니다.</li>
+            </ul>
+
+            <h3>2. 기본 및 결함 주파수 분석</h3>
+            <p>사용자가 입력한 RPM과 블레이드 수를 기반으로 기본 주파수와 결함 주파수(7×)를 계산하고, 해당 주파수의 진폭과 dB 값을 표시합니다.</p>
+            <ul>
+                <li><b>입력값</b>: 현재 RPM, 블레이드 수, 분석 배수 범위(7× 또는 14×).</li>
+                <li><b>결과</b>: 기본 주파수와 결함 주파수의 주파수(Hz), 진폭, dB, 그리고 절대 dB 차이를 표시.</li>
+            </ul>
+
+            <h3>3. 고조파 분석</h3>
+            <p>선택한 배수 범위(1× ~ 7× 또는 1× ~ 14×)까지의 고조파를 표로 제공합니다.</p>
+            <ul>
+                <li><b>표 항목</b>: 배수, 주파수(Hz), 진폭, dB.</li>
+                <li><b>14× 판정</b>: 14× 선택 시, 14× 주파수의 이상 여부를 추가로 분석합니다.</li>
+            </ul>
+
+            <h3>4. AI 상태 판정</h3>
+            <p>결함 주파수(7×)와 14×(선택 시)의 진폭을 분석하여 기계 상태를 자동 판정합니다.</p>
+            <ul>
+                <li><b>판정 기준</b>: 사용자 설정 임계값(주의/결함 dB)에 따라 정상/주의/결함으로 분류.</li>
+                <li><b>14× 특이 검사</b>: 14× 비율이 비정상적으로 높거나 급증 시 결함으로 판정.</li>
+                <li><b>RPM 트렌드 감지</b>: RPM 변화와 RMS dB 변화의 불일치를 감지하여 비정상 반응을 경고.</li>
+                <li><b>상태 표시</b>: 정상(녹색), 주의(주황색), 결함(빨간색) 배지로 표시.</li>
+            </ul>
+
+            <h3>5. 통계 지표</h3>
+            <p>시간 영역 및 주파수 영역의 주요 통계 지표를 제공합니다.</p>
+            <ul>
+                <li><b>이동평균 (dB)</b>: 결함 주파수와 기본 주파수 간 dB 차이의 이동평균.</li>
+                <li><b>RMS (dB)</b>: 시간 영역 신호의 실효값(Root Mean Square).</li>
+                <li><b>Peak (dB)</b>: 시간 영역 신호의 최대 진폭.</li>
+                <li><b>첨도 (Kurtosis)</b>: 신호의 분포 뾰족함을 나타내는 지표.</li>
+                <li><b>파고율 (Crest)</b>: 피크와 RMS의 비율.</li>
+            </ul>
+
+            <h3>6. 경보음 및 알람</h3>
+            <p>결함이 감지되면 비프음을 재생하여 사용자에게 경고합니다.</p>
+            <ul>
+                <li><b>경보음 설정</b>: 끄기/비프음 선택 가능.</li>
+                <li><b>조건</b>: AI 판정 결과가 "결함"일 때 작동.</li>
+            </ul>
+
+            <h3>7. 로그 수집 및 CSV 다운로드</h3>
+            <p>분석 데이터를 실시간으로 기록하고 CSV 파일로 다운로드할 수 있습니다.</p>
+            <ul>
+                <li><b>로그 항목</b>: 타임스탬프, RPM, 주파수, 진폭, dB, AI 판정 결과 등.</li>
+                <li><b>기능</b>: 수집 시작/중지, CSV 다운로드, 이전 값 리셋.</li>
+            </ul>
+        </div>
+
+        <div class="panel">
+            <h2>사용 방법</h2>
+            <h3>1. 초기 설정</h3>
+            <ol>
+                <li>브라우저에서 도구를 열고 마이크 권한을 허용합니다.</li>
+                <li><b>마이크 연결</b> 버튼을 클릭하여 오디오 입력을 활성화합니다.</li>
+                <li>필요 시 <b>RPM</b>, <b>블레이드 수</b>, <b>분석 배수 범위</b>, <b>FFT 크기</b>를 설정합니다.</li>
+            </ol>
+
+            <h3>2. 분석 시작</h3>
+            <ol>
+                <li><b>분석 시작</b> 버튼을 클릭하여 실시간 분석을 시작합니다.</li>
+                <li>스펙트럼 그래프, 고조파 표, 통계 지표, AI 판정 결과를 확인합니다.</li>
+            </ol>
+
+            <h3>3. 설정 조정</h3>
+            <ul>
+                <li><b>이동평균 길이</b>: 프레임 수를 설정하여 dB 차이의 이동평균을 조정.</li>
+                <li><b>AI 판정 임계값</b>: 주의/결함 기준 dB 값을 설정.</li>
+                <li><b>RPM 트렌드 감지</b>: 민감도(1%, 3%, 10%)를 선택하여 RPM 변화 감지.</li>
+                <li><b>경보음</b>: 비프음 활성화/비활성화.</li>
+            </ul>
+
+            <h3>4. 로그 관리</h3>
+            <ol>
+                <li><b>수집 시작</b> 버튼을 눌러 로그 기록을 시작합니다.</li>
+                <li>분석 완료 후 <b>CSV 다운로드</b> 버튼으로 데이터를 저장합니다.</li>
+                <li>필요 시 <b>이전값 리셋</b> 버튼으로 이전 프레임 데이터를 초기화합니다.</li>
+            </ol>
+
+            <h3>5. 분석 중지</h3>
+            <p><b>분석 중지</b> 버튼을 클릭하여 분석을 종료합니다.</p>
+        </div>
+
+        <div class="panel">
+            <h2>주의사항</h2>
+            <ul>
+                <li>브라우저의 마이크 권한을 반드시 허용해야 합니다.</li>
+                <li>로컬에서 실행 시 <code>http://localhost:8000/50.html</code>로 접속하면 안정적입니다.</li>
+                <li>FFT 크기 변경은 분석 중에도 적용되지만, CPU 사용량에 영향을 줄 수 있습니다.</li>
+                <li>로그 데이터는 분석 중에만 기록되며, 수집을 시작하지 않으면 CSV로 저장되지 않습니다.</li>
+                <li>14× 판정은 배수 범위를 14×로 설정했을 때만 활성화됩니다.</li>
+            </ul>
+        </div>
+
+        <div class="panel">
+            <h2>UI 구성</h2>
+            <table>
+                <tr>
+                    <th>영역</th>
+                    <th>설명</th>
+                </tr>
+                <tr>
+                    <td>왼쪽 패널</td>
+                    <td>설정 입력(RPM, 블레이드 수, FFT 크기 등), 버튼(마이크 연결, 분석 시작/중지), 상태 표시, 통계 지표, 고조파 표, AI 판정 결과.</td>
+                </tr>
+                <tr>
+                    <td>오른쪽 패널</td>
+                    <td>실시간 스펙트럼 그래프, 마우스 오버 툴팁(주파수/진폭), 추가 통계 지표(첨도, 파고율, 빈당 주파수).</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="panel">
+            <h2>기술 세부사항</h2>
+            <ul>
+                <li><b>FFT 크기</b>: 2048, 4096, 8192 중 선택 가능. 기본값은 4096.</li>
+                <li><b>주파수 해상도</b>: 샘플레이트 / FFT 크기 (빈당 주파수).</li>
+                <li><b>dB 계산</b>: 20 * log10(진폭 / 255)를 사용하여 진폭을 dB로 변환.</li>
+                <li><b>알람</b>: 880Hz 사인파 비프음, 결함 감지 시 200ms 재생.</li>
+                <li><b>로그 형식</b>: CSV 파일에 타임스탬프, RPM, 주파수, 진폭, dB, AI 판정 등을 기록.</li>
+            </ul>
+        </div>
+
+        <div class="small muted" style="text-align:center;padding-top:10px">
+            이 메뉴얼은 소리 분석기(50.html)를 기반으로 작성되었습니다. 추가 문의는 개발자에게 연락하세요.
+        </div>
+    </div>
+</body>
+</html>
