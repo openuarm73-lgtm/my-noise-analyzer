@@ -31,6 +31,34 @@
   .tooltip{position:absolute;padding:6px 8px;background:rgba(0,0,0,0.85);color:#fff;border-radius:6px;font-size:0.85rem;pointer-events:none;transform:translate(-50%,-120%);white-space:nowrap;z-index:10}
   .muted{color:#666;font-size:0.9rem}
   @media(max-width:1000px){.grid{grid-template-columns:1fr;}.panel{margin-bottom:12px}}
+
+/* --- AI 판정 결과 흔들림 방지용 고정 레이아웃 --- */
+#aiState {
+    min-height: 34px;      /* 상태 배지 높이 고정 */
+    display: flex;
+    align-items: center;   /* 내용 중앙 정렬 */
+}
+
+#aiNote {
+    min-height: 40px;      /* 상세 메시지 영역 고정 */
+    display: flex;
+    align-items: center;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </style>
 </head>
 <body>
@@ -564,3 +592,4 @@ window.addEventListener('beforeunload', ()=>{ if(audioContext && audioContext.st
 </script>
 </body>
 </html>
+
