@@ -164,7 +164,11 @@
         </div>
         <div style="width:140px">
           <label>경보음</label>
-          <select id="alarmMode"><option value="off">끄기</option><option value="beep" selected>off</option></select>
+          <select id="alarmMode">
+    <option value="off" selected>끄기</option>
+    <option value="beep">비프음</option>
+</select>
+
         </div>
       </div>
 
@@ -653,6 +657,7 @@ window.addEventListener('beforeunload', ()=>{ if(audioContext && audioContext.st
 </script>
 </body>
 </html>
+
 
 
 
