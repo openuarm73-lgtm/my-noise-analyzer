@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+<title>펠릿타이저 마모 지수 분석기</title>
+
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+    background:#0a0a14;color:#eee;
+    padding:12px;
+  }
+  .container{
+    max-width:1000px;margin:0 auto;background:#141622;
+    border-radius:14px;padding:14px;box-shadow:0 0 20px rgba(0,0,0,0.4)
+  }
+  h1{text-align:center;font-size:1.3rem;margin-bottom:14px;color:#fff}
+
+  /* PC = 2열 / 모바일 = 1열 */
+  .grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:14px;
+  }
+  @media(max-width:850px){
+    .grid{grid-template-columns:1fr;}
+  }
+
+  .panel{background:#1e2030;padding:14px;border-radius:10px}
+
+  label{display:block;margin-top:10px;font-weight:600;margin-bottom:6px;font-size:0.95rem}
+
+  input,select{
+    width:100%;padding:10px;border-radius:10px;border:1px solid #333;
+    background:#0f1018;color:#eee;font-size:1rem;
+  }
+
+  button{
+    width:100%;padding:12px;margin-top:10px;border:none;
+    border-radius:10px;background:#3a6df0;color:#fff;
+    font-size:1.05rem;font-weight:700;cursor:pointer;
+  }
+  button:disabled{background:#555}
+
+  .status{
+    margin-top:12px;padding:10px;border-radius:8px;font-size:0.9rem;
+  }
+  .success{background:#1f402f;color:#9ff7c0;}
+  .error{background:#402727;color:#ff9d9d;}
+  .info{background:#3a3a18;color:#fff7a8;}
+  .warn{background:#774a00; color:#fff;} /* 경고색 변경 */
+
+  .kpi{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .kpi-item{
+    background:#10111a;padding:8px;border-radius:8px;
+    box-shadow:0 0 8px rgba(0,0,0,0.4);min-width:110px
+  }
+  
+  /* 마모 지수 강조 */
+  #wearIndexBox{
+      background:#8b4513; /* 주황색 계열로 강조 */
+      padding:12px; border-radius:10px;
+      margin-top:12px; text-align:center;
+      box-shadow: 0 0 15px rgba(255,140,0,0.5);
+  }
+  #wearIndexBox h2{
+      font-size: 1.1rem; color: #fff; margin-bottom: 4px;
+  }
+  #wearIndex{
+      font-size: 2.2rem; font-weight: 800; color: #ffeb3b;
+      text-shadow: 1px 1px 5px #000;
+  }
+
+
+  /* 캔버스 기본 스타일 */
+  canvas{
+    width:100%;
+    border-radius:10px;
+    background:#000;
+  }
+  
+  /* 개별 캔버스 높이 설정 */
+  #spectrumCanvas{ height: 250px; cursor: grab; } 
+  #timeCanvas{ height: 100px; margin-top: 8px; }
+  #spectrogramCanvas{ height: 200px; }
+
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:0.9rem}
+  th,td{padding:6px;border-bottom:1px solid #333}
+
+  .badge{
+    padding:4px 10px;border-radius:999px;color:white;font-weight:700;
+  }
+  .ok{background:#2fa86d}
+  .warn{background:#e49b23}
+  .bad{background:#e64545}
+
+  /* 모바일에서도 절대 흔들리지 않는 AI 박스 */
+  #aiBox{
+    height:120px;overflow:hidden;margin-top:12px;
+    background:#11131d;border-radius:10px;padding:10px;
+  }
+  #aiState{
+    height:34px;display:flex;align-items:center;
+    overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+    margin-bottom:8px;
+  }
+  #aiNote{
+    height:70px;display:flex;align-items:center;
+    overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+    font-size:0.9rem;color:#ddd;
+  }
+
+  #tooltip{
+    position:absolute;background:rgba(0,0,0,0.8);color:#fff;
+    padding:6px;border-radius:6px;font-size:0.85rem;display:none;
+    pointer-events:none;z-index:10;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="container">
+<h1>🏭 펠릿타이저 마모 지수 분석기</h1>
+
+<div class="grid">
+
+<div class="panel">
+
+  <div id="wearIndexBox">
+      <h2>7x 하모닉 마모 지수 (dB)</h2>
+      <div id="wearIndex">-</div>
+  </div>
+
+  <label style="margin-top:14px">RPM</label>
+  <input type="number" id="rpmInput" value="1500">
+
+  <label>블레이드 수 (1x 기본 주파수 결정)</label>
+  <input type="number" id="bladeCountInput" value="20">
+  
+  <label>주요 마모 주파수 배수 (N×)</label>
+  <input type="number" id="wearMultipleInput" value="7">
+
+  <label>FFT 크기</label>
+  <select id="fftSizeSelect">
+    <option value="2048">2048</option>
+    <option value="4096" selected>4096</option>
+    <option value="8192">8192</option>
+  </select>
+
+  <label style="margin-top:14px">AI dB 임계값 (주의/결함)</label>
+  <div style="display:flex;gap:8px">
+    <input type="number" id="warnThreshold" value="3">
+    <input type="number" id="badThreshold" value="8">
+  </div>
+  
+  <button id="connectBtn">🎤 마이크 연결</button>
+  <button id="startButton" disabled>▶ 분석 시작</button>
+  <button id="stopButton" disabled>⏹ 중지</button>
+  
+  <button id="saveRefBtn" style="background:#8b4513; margin-top: 6px;">🌟 기준 스펙트럼 저장</button>
+  <div id="status" class="status info">대기 중…</div>
+
+  <div class="panel" style="margin-top:12px">
+    <div><b>주요 하모닉 현황</b></div>
+    <div id="freqResult" style="margin:6px 0; font-size:0.9rem;"></div>
+    <div id="aiBox">
+      <div id="aiState"><span class="badge ok">분석 대기</span></div>
+      <div id="aiNote">AI 대기 중…</div>
+    </div>
+  </div>
+  
+  <div class="kpi">
+    <div class="kpi-item"><div>시간</div><b id="timeCounter">0</b></div>
+    <div class="kpi-item"><div>RMS dB</div><b id="rmsVal">-</b></div>
+    <div class="kpi-item"><div>Kurtosis</div><b id="kurtVal">-</b></div>
+    <div class="kpi-item"><div>Crest</div><b id="crestVal">-</b></div>
+  </div>
+  
+  <button id="resetZoomBtn" style="background:#555; margin-top: 12px;">🔍 확대/이동 초기화</button>
+</div>
+
+<div class="panel">
+  <div style="font-size:0.9rem">실시간 FFT 스펙트럼 (3kHz ~ 6kHz 집중)</div>
+  <div style="position:relative;margin-top:8px">
+    <canvas id="spectrumCanvas" style="cursor: grab;"></canvas>
+    <div id="tooltip"></div>
+    <div style="font-size:0.8rem; color:#00e0ff; position:absolute; top:2px; left:2px;">실시간</div>
+    <div style="font-size:0.8rem; color:#ffaa00; position:absolute; top:16px; left:2px;">Peak Hold</div>
+    <div style="font-size:0.8rem; color:#44ff44; position:absolute; top:30px; left:2px;">기준</div>
+    <div style="font-size:0.8rem; color:orange; position:absolute; top:44px; left:2px;">N× (주요 마모)</div>
+  </div>
+
+  <div style="font-size:0.9rem; margin-top: 12px;">시간 파형 (Time Waveform)</div> 
+  <canvas id="timeCanvas"></canvas>
+
+  <div style="position:relative;margin-top:0">
+    <canvas id="spectrogramCanvas"></canvas>
+  </div>
+  
+  <div style="font-size:0.9rem; margin-top: 12px;">하모닉 상세 목록 (1x ~ 14x)</div>
+    <table>
+      <thead><tr><th>배수</th><th>Hz</th><th>Amp</th><th>dB</th><th>N×대비</th></tr></thead>
+      <tbody id="harmonicsTable"></tbody>
+    </table>
+
+</div>
+
+</div>
+</div>
+
+<script>
+/* =========================================================
+   펠릿타이저 전문 분석 로직
+   ========================================================= */
+
+let audioContext, analyser, source;
+let freqData, timeData;
+let isRun=false;
+let raf;
+
+// 펠릿타이저 전용 상태 저장 변수
+let prevWearDb = null; // 이전 7x(N×) dB 값
+let prevBaseDb = null; // 이전 1x dB 값
+let prevWearMultipleAmp = null; // 이전 N× 진폭
+let prevDoubleWearMultipleAmp = null; // 이전 2N× 진폭
+
+// 고급 기능 데이터
+let peakHoldData = []; 
+let referenceSpectrumData = null;
+
+// 줌/팬 상태 변수
+let viewStartIndex = 0;
+let viewEndIndex = 0;
+let isPanning = false;
+let lastPanX = 0;
+
+/* UI GET */
+const rpmIn = _id('rpmInput');
+const bladeIn = _id('bladeCountInput');
+const wearMultIn = _id('wearMultipleInput'); // N× 마모 배수 입력
+const fftIn = _id('fftSizeSelect');
+
+const btnMic = _id('connectBtn');
+const btnStart = _id('startButton');
+const btnStop = _id('stopButton');
+const saveRefBtn = _id('saveRefBtn');
+const resetZoomBtn = _id('resetZoomBtn');
+
+const statusBox = _id('status');
+const warnIn = _id('warnThreshold');
+const badIn = _id('badThreshold');
+
+const timeBox = _id('timeCounter');
+const rmsBox = _id('rmsVal');
+const kurtBox = _id('kurtVal');
+const crestBox = _id('crestVal'); 
+const wearIndexBox = _id('wearIndex'); // 7x 하모닉 지수 표시
+
+const freqRes = _id('freqResult');
+const harmTable = _id('harmonicsTable');
+
+const aiState = _id('aiState');
+const aiNote  = _id('aiNote');
+
+// 캔버스
+const canvas = _id('spectrumCanvas');
+const ctx = canvas.getContext('2d');
+const tooltip = _id('tooltip');
+const timeCanvas = _id('timeCanvas');
+const timeCtx = timeCanvas.getContext('2d');
+const specCanvas = _id('spectrogramCanvas');
+const specCtx = specCanvas.getContext('2d');
+
+function _id(x){return document.getElementById(x);}
+
+/* 캔버스 크기 설정 */
+function setCanvasSize() {
+  const containerWidth = canvas.parentNode.clientWidth;
+  
+  canvas.width = containerWidth;
+  timeCanvas.width = containerWidth;
+  specCanvas.width = containerWidth;
+}
+setCanvasSize();
+window.addEventListener('resize', setCanvasSize); 
+
+
+/* ---------- 마이크 연결 ---------- */
+btnMic.onclick = async ()=>{
+  try{
+    let stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    audioContext = new (window.AudioContext||window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = Number(fftIn.value);
+    
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+    
+    // 줌 범위 초기화 (3kHz ~ 6kHz에 맞춘 초기 줌을 위해 Nyquist 주파수(SR/2)를 기반으로 계산)
+    const sr = audioContext.sampleRate;
+    const bin = sr / analyser.fftSize;
+    const startHz = 0; // 초기값은 0으로 설정
+    const endHz = 8000; // 3kHz~6kHz 포함, 최대 8kHz까지 보장
+    
+    viewStartIndex = Math.round(startHz / bin);
+    viewEndIndex = Math.min(analyser.frequencyBinCount, Math.round(endHz / bin));
+    
+    // Peak Hold & Reference 초기화
+    peakHoldData = new Uint8Array(analyser.frequencyBinCount);
+    referenceSpectrumData = null;
+
+    source = audioContext.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    btnMic.disabled=true; btnMic.innerText="🎤 연결됨";
+    btnStart.disabled=false;
+    statusBox.className="status success";
+    statusBox.innerText="마이크 연결 완료";
+  }catch(e){
+    statusBox.className="status error";
+    statusBox.innerText="마이크 연결 실패: "+e;
+  }
+};
+
+/* ---------- 분석 시작 ---------- */
+btnStart.onclick = ()=>{
+  if(!audioContext) return;
+  isRun=true;
+  btnStart.disabled=true;
+  btnStop.disabled=false;
+  
+  statusBox.className="status info";
+  statusBox.innerText="분석 중…";
+  
+  t0=performance.now();
+  
+  // 초기화
+  if (analyser) {
+    peakHoldData = new Uint8Array(analyser.frequencyBinCount);
+  }
+  specCtx.fillStyle = '#0a0a14'; 
+  specCtx.fillRect(0, 0, specCanvas.width, specCanvas.height);
+  timeCtx.fillStyle = '#0a0a14';
+  timeCtx.fillRect(0, 0, timeCanvas.width, timeCanvas.height);
+  
+  loop();
+};
+
+/* ---------- 중지 ---------- */
+btnStop.onclick = ()=>{
+  isRun=false; 
+  btnStart.disabled=false; 
+  btnStop.disabled=true;
+  statusBox.innerText="분석 중지됨.";
+};
+
+/* ---------- 기준 스펙트럼 저장 ---------- */
+saveRefBtn.onclick = () => {
+    if (!freqData || !isRun) {
+        statusBox.className = 'status warn';
+        statusBox.innerText = '분석 시작 후 저장할 수 있습니다.';
+        return;
+    }
+    referenceSpectrumData = new Uint8Array(freqData); 
+    statusBox.className = 'status info';
+    statusBox.innerText = '기준 스펙트럼(녹색)이 저장되었습니다.';
+};
+
+/* ---------- 줌 초기화 ---------- */
+resetZoomBtn.onclick = () => {
+    if (analyser) {
+        const sr = audioContext.sampleRate;
+        const bin = sr / analyser.fftSize;
+        viewStartIndex = Math.round(0 / bin);
+        viewEndIndex = Math.min(analyser.frequencyBinCount, Math.round(8000 / bin)); // 8kHz까지 초기화
+        statusBox.className = 'status info';
+        statusBox.innerText = '확대/이동이 0Hz ~ 8kHz로 초기화되었습니다.';
+    }
+};
+
+
+/* ---------- 분석 루프 ---------- */
+let t0=0;
+function loop(){
+  if(!isRun) return; 
+
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+  
+  // Peak Hold 업데이트
+  if (peakHoldData.length !== freqData.length) {
+      peakHoldData = [...freqData];
+  } else {
+      for (let i = 0; i < freqData.length; i++) {
+          if (freqData[i] > peakHoldData[i]) {
+              peakHoldData[i] = freqData[i];
+          }
+      }
+  }
+
+  /* RPM 및 주파수 계산 */
+  let sr = audioContext.sampleRate;
+  let fftN = analyser.fftSize;
+  let bin = sr/fftN;
+
+  let rpm = Number(rpmIn.value);
+  let blade = Number(bladeIn.value);
+  let wearM = Number(wearMultIn.value); // N (주요 마모 배수)
+  let maxMul = 14; // 테이블 표시는 최대 14x까지
+
+  let baseHz = (rpm/60)*blade;
+  let wearHz = baseHz * wearM;
+  let doubleWearHz = baseHz * (wearM * 2);
+
+  let baseI = Math.round(baseHz/bin);
+  let wearI = Math.round(wearHz/bin);
+  let doubleWearI = Math.round(doubleWearHz/bin);
+
+  let baseAmp = freqData[clamp(baseI)];
+  let wearAmp  = freqData[clamp(wearI)];
+  let doubleWearAmp  = freqData[clamp(doubleWearI)];
+
+  let baseDb = ampToDb(baseAmp);
+  let wearDb  = ampToDb(wearAmp);
+  let doubleWearDb  = ampToDb(doubleWearAmp);
+
+  let wearDiffDb = wearDb - baseDb; // 🔥 핵심 마모 지수: N×(7×) dB - 1× dB
+
+  /* RMS, Kurtosis, Crest */
+  let tArr = floatNorm(timeData);
+  let rms = rmsCalc(tArr);
+  let rmsDb = 20*Math.log10(rms||1e-8);
+  let kurt = kurtCalc(tArr);
+  let crest = crestCalc(tArr);
+
+  /* 고조파 테이블 데이터 */
+  let hList=[];
+  for(let k=1;k<=maxMul;k++){
+    let f = baseHz*k;
+    let idx=Math.round(f/bin);
+    let a=freqData[clamp(idx)];
+    let db = ampToDb(a);
+    let ratioToWear = (wearDb > -100) ? (db - wearDb) : 0; // N× 대비 dB 차이
+    hList.push({k,f,a,db,ratioToWear});
+  }
+
+
+  /* 🔥 AI 판정 로직: 펠릿타이저 전문 판정 */
+  let aiL="정상", aiC="ok", msg="";
+
+  let warnT=Number(warnIn.value); // 예: 3 dB
+  let badT=Number(badIn.value);  // 예: 8 dB
+
+  // 1. 과도한 마모/과압력 판정
+  if(wearDiffDb > badT){ 
+      aiL="결함 의심 / 과압력"; aiC="bad"; msg=`N× 하모닉 지수 ${wearDiffDb.toFixed(2)} dB (기준 ${badT} 초과)`; 
+  }
+  else if(wearDiffDb > warnT){ 
+      aiL="주의 / 고압력"; aiC="warn"; msg=`N× 하모닉 지수 ${wearDiffDb.toFixed(2)} dB (기준 ${warnT} 초과)`; 
+  }
+  else {
+      msg=`N× 지수 ${wearDiffDb.toFixed(2)} dB, 안정 범위`;
+  }
+
+  // 2. 압력 감소 패턴 판정 (미는 압력 감소 시 7x가 먼저 낮아지는 현상)
+  if(prevWearDb !== null && prevBaseDb !== null){
+      const wearDrop = prevWearDb - wearDb;
+      const baseDrop = prevBaseDb - baseDb;
+      
+      // N× (7x) dB가 3dB 이상 하락했고, 1x 하락보다 N× 하락이 더 큰 경우 (압력 감소 시그널)
+      if(wearDrop > 3 && wearDrop > baseDrop){
+        
+        // 14x(2N×)가 7x(N×) 대비 상대적으로 커 보이는지 확인 (진폭 비율 사용)
+        const wearAmpToDoubleRatio = wearAmp > 0 ? doubleWearAmp / wearAmp : 0;
+        
+        if (wearAmpToDoubleRatio > 2) { // 2배 이상이면 상대적으로 크다고 간주
+             aiL="정상 (압력 감소 패턴)"; 
+             aiC="ok"; 
+             msg=`N× 하락 확인 (${wearDrop.toFixed(1)}dB↓). 2N×/N× 비율 ${wearAmpToDoubleRatio.toFixed(1)}로 정상 패턴.`;
+        } else {
+             aiL="주의 (N× 하락)";
+             aiC="warn";
+             msg=`N× 하락 확인 (${wearDrop.toFixed(1)}dB↓). 미는 힘 감소 상태 확인 필요.`;
+        }
+      }
+  }
+
+
+  /* UI 업데이트 */
+  timeBox.innerText = Math.floor((performance.now()-t0)/1000)+"s";
+  rmsBox.innerText = rmsDb.toFixed(2)+" dB";
+  kurtBox.innerText = kurt.toFixed(2);
+  crestBox.innerText = crest.toFixed(2);
+  wearIndexBox.innerText = wearDiffDb.toFixed(2)+" dB"; // 🔥 핵심 지수
+
+  freqRes.innerHTML =
+    `1× (기본): ${Math.round(baseHz)}Hz / ${baseDb.toFixed(2)}dB<br>`+
+    `${wearM}× (마모): ${Math.round(wearHz)}Hz / ${wearDb.toFixed(2)}dB<br>`+
+    `${wearM*2}×: ${Math.round(doubleWearHz)}Hz / ${doubleWearDb.toFixed(2)}dB`;
+
+  aiState.innerHTML=`<span class="badge ${aiC}">${aiL}</span>`;
+  aiNote.innerText=msg||"";
+
+  harmTable.innerHTML="";
+  hList.forEach(h=>{
+    // N× 및 2N×는 특별히 강조
+    let style = "";
+    if (h.k === wearM) style = 'style="background:#8b4513; color:#fff;"';
+    if (h.k === wearM * 2) style = 'style="background:#5e326b; color:#fff;"'; // 14x는 보라색
+
+    harmTable.innerHTML+=`<tr ${style}><td>${h.k}×</td><td>${Math.round(h.f)}</td><td>${h.a}</td><td>${h.db.toFixed(2)}</td><td>${h.ratioToWear.toFixed(2)}</td></tr>`;
+  });
+
+  /* 캔버스 그리기 */
+  drawFFT(freqData);
+  drawSpectrogram(freqData);
+  drawTimeWaveform(timeData);
+
+  /* prev 업데이트 */
+  prevWearDb = wearDb;
+  prevBaseDb = baseDb;
+  prevWearMultipleAmp = wearAmp;
+  prevDoubleWearMultipleAmp = doubleWearAmp;
+
+  raf=requestAnimationFrame(loop);
+}
+
+/* ---------- 캔버스 그리기 함수 (로직 유지) ---------- */
+
+/* 시간 파형 그리기 */
+function drawTimeWaveform(arr) {
+    const w = timeCanvas.width;
+    const h = timeCanvas.height;
+    timeCtx.clearRect(0, 0, w, h);
+    timeCtx.fillStyle = "#0a0a14";
+    timeCtx.fillRect(0, 0, w, h);
+    
+    timeCtx.beginPath();
+    timeCtx.moveTo(0, h / 2);
+    timeCtx.lineTo(w, h / 2);
+    timeCtx.strokeStyle = "#555";
+    timeCtx.lineWidth = 1;
+    timeCtx.stroke();
+    
+    timeCtx.beginPath();
+    timeCtx.strokeStyle = "#4aaaff";
+    timeCtx.lineWidth = 2;
+    
+    const bufferLength = arr.length;
+    let x = 0;
+    const sliceWidth = w * 1.0 / bufferLength;
+    
+    for(let i = 0; i < bufferLength; i++) {
+        const v = arr[i] / 255.0; 
+        const y = v * h; 
+
+        if(i === 0) {
+            timeCtx.moveTo(x, y);
+        } else {
+            timeCtx.lineTo(x, y);
+        }
+
+        x += sliceWidth;
+    }
+    timeCtx.stroke();
+}
+
+/* 스펙트로그램 그리기 (줌/팬 적용) */
+function drawSpectrogram(arr) {
+    const specWidth = specCanvas.width;
+    const specHeight = specCanvas.height;
+    
+    specCtx.drawImage(specCanvas, 0, 1); 
+
+    const yPos = 0; 
+    specCtx.fillStyle = '#0a0a14'; 
+    specCtx.fillRect(0, yPos, specWidth, 1); 
+
+    const numBins = arr.length; 
+    const startIdx = viewStartIndex;
+    const endIdx = viewEndIndex;
+    const viewRange = endIdx - startIdx;
+
+    for (let x = 0; x < specWidth; x++) { 
+        const binFraction = (x / specWidth) * viewRange + startIdx; 
+        let binIndex = Math.floor(binFraction);
+        
+        binIndex = Math.min(numBins - 1, Math.max(0, binIndex));
+
+        const amplitude = arr[binIndex];
+        const color = ampToHeatmap(amplitude);
+        
+        specCtx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+        specCtx.fillRect(x, yPos, 1, 1); 
+    }
+    
+    specCtx.fillStyle = '#0a0a14'; 
+    specCtx.fillRect(0, specHeight - 1, specWidth, 1); 
+}
+
+/* FFT 그리기 (줌/팬, Peak Hold, 기준선, 하모닉 강조) */
+function drawFFT(arr){ 
+  let w=canvas.width, h=canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
+
+  const wearM = Number(wearMultIn.value); // N (주요 마모 배수)
+  
+  const startIdx = viewStartIndex;
+  const endIdx = viewEndIndex;
+  const viewRange = endIdx - startIdx;
+
+  const drawLine = (data, color, lineWidth) => {
+    ctx.beginPath();
+    for(let i=startIdx;i<endIdx;i++){
+        const x=(i-startIdx)/viewRange*w;
+        const y=h - (data[i]/255)*h;
+        if(i===startIdx) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=color;
+    ctx.lineWidth=lineWidth;
+    ctx.stroke();
+  };
+
+  // 1. 기준 스펙트럼 (녹색)
+  if (referenceSpectrumData) {
+      drawLine(referenceSpectrumData, "#44ff44", 1);
+  }
+  
+  // 2. Peak Hold 스펙트럼 (주황색)
+  if (peakHoldData.length > 0) {
+      drawLine(peakHoldData, "#ffaa00", 1); 
+  }
+
+  // 3. 실시간 FFT 스펙트럼 (파란색)
+  drawLine(arr, "#00e0ff", 1.5);
+  
+
+  // 4. 하모닉 선 그리기 (N×, 2N× 강조)
+  if(audioContext && analyser){
+    let sr = audioContext.sampleRate;
+    let fftN = analyser.fftSize;
+    let bin = sr/fftN;
+    
+    let rpm = Number(rpmIn.value);
+    let blade = Number(bladeIn.value);
+    let base = (rpm/60)*blade;
+
+    // 1x, N×(7×), 2N×(14×)만 표시
+    const keyMultiples = [1, wearM, wearM * 2]; 
+
+    for(let k of keyMultiples){
+        let f = base * k;
+        let idx = Math.round(f / bin); 
+        
+        if (idx >= startIdx && idx < endIdx){
+            let x = ((idx - startIdx) / viewRange) * w;
+
+            if(k === wearM){ // N×(7×) 하모닉: 주황색, 굵게
+                ctx.strokeStyle = "orange"; 
+                ctx.lineWidth = 3;
+            } else if (k === wearM * 2){ // 2N×(14×) 하모닉: 보라색
+                ctx.strokeStyle = "purple"; 
+                ctx.lineWidth = 2;
+            } else { // 1x 하모닉: 빨간색
+                ctx.strokeStyle = "#ff4444"; 
+                ctx.lineWidth = 2;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, h);
+            ctx.stroke();
+        }
+    }
+  }
+}
+
+/* ---------- 줌/팬 이벤트 핸들러 (변화 없음) ---------- */
+canvas.addEventListener('mousedown', (e) => {
+    isPanning = true;
+    lastPanX = e.clientX;
+    canvas.style.cursor = 'grabbing';
+});
+document.addEventListener('mouseup', () => {
+    if (isPanning) {
+        isPanning = false;
+        canvas.style.cursor = 'grab';
+    }
+});
+canvas.addEventListener('mousemove', (e) => {
+    if (!isPanning || !analyser) return;
+
+    const dx = e.clientX - lastPanX;
+    lastPanX = e.clientX;
+    
+    const binCount = analyser.frequencyBinCount;
+    const canvasWidth = canvas.width;
+    const currentRange = viewEndIndex - viewStartIndex;
+    
+    const binShift = Math.round(dx / canvasWidth * currentRange);
+    
+    if (binShift !== 0) {
+        let newStart = viewStartIndex - binShift;
+        let newEnd = viewEndIndex - binShift;
+        
+        if (newStart < 0) {
+            newEnd += (0 - newStart);
+            newStart = 0;
+        }
+        if (newEnd > binCount) {
+            newStart -= (newEnd - binCount);
+            newEnd = binCount;
+        }
+        
+        viewStartIndex = Math.max(0, newStart);
+        viewEndIndex = Math.min(binCount, newEnd);
+        
+        if (isRun) {
+             drawFFT(freqData);
+             drawSpectrogram(freqData);
+        }
+    }
+});
+canvas.addEventListener('wheel', (e) => {
+    if (!analyser) return;
+    
+    e.preventDefault();
+    
+    const binCount = analyser.frequencyBinCount;
+    const currentRange = viewEndIndex - viewStartIndex;
+    
+    const mouseXRatio = (e.clientX - canvas.getBoundingClientRect().left) / canvas.width;
+    
+    let newRange;
+
+    if (e.deltaY < 0) {
+        newRange = Math.min(binCount, Math.round(currentRange * 1.1));
+    } else { 
+        const minRange = Math.max(Math.round(binCount * 0.05), 100); 
+        newRange = Math.max(minRange, Math.round(currentRange / 1.1)); 
+    }
+    
+    const diffRange = newRange - currentRange;
+    
+    let newStart = viewStartIndex - Math.round(diffRange * mouseXRatio);
+    let newEnd = viewEndIndex + Math.round(diffRange * (1 - mouseXRatio));
+
+    if (newStart < 0) {
+        newEnd += (0 - newStart);
+        newStart = 0;
+    }
+    if (newEnd > binCount) {
+        newStart -= (newEnd - binCount);
+        newEnd = binCount;
+    }
+    
+    viewStartIndex = Math.max(0, newStart);
+    viewEndIndex = Math.min(binCount, newEnd);
+    
+    if (isRun) {
+        drawFFT(freqData);
+        drawSpectrogram(freqData);
+    }
+}, {passive: false});
+
+/* ---------- 유틸 (변화 없음) ---------- */
+canvas.addEventListener('mousemove',e=>{
+  if(!analyser || !freqData) return;
+  let r=canvas.getBoundingClientRect();
+  let x=e.clientX-r.left;
+  let w=canvas.width;
+  const startIdx = viewStartIndex;
+  const endIdx = viewEndIndex;
+  const viewRange = endIdx - startIdx;
+  let idx = startIdx + Math.floor((x/w)*viewRange);
+  idx = clamp(idx);
+  let sr=audioContext.sampleRate;
+  let f=idx*(sr/analyser.fftSize);
+  let a=freqData[idx];
+  tooltip.style.left=x+"px";
+  tooltip.style.top="10px";
+  tooltip.style.display="block";
+  tooltip.textContent=`${Math.round(f)}Hz / ${a}`;
+});
+canvas.addEventListener('mouseleave',()=>tooltip.style.display="none");
+
+function clamp(v){return Math.max(0,Math.min(freqData.length-1,v));}
+function ampToDb(a){return 20*Math.log10((a||1)/255);}
+function floatNorm(u8){return Array.from(u8,x=>(x-128)/128);}
+function rmsCalc(arr){return Math.sqrt(arr.reduce((s,x)=>s+x*x,0)/(arr.length||1));}
+function kurtCalc(arr){
+  let m=arr.reduce((s,x)=>s+x,0)/arr.length;
+  let m2=0,m4=0;arr.forEach(x=>{let d=x-m;m2+=d*d;m4+=d*d*d*d;});
+  m2/=arr.length; m4/=arr.length; return m4/(m2*m2+1e-12);
+}
+function crestCalc(arr){
+  let p=Math.max(...arr.map(x=>Math.abs(x)));
+  let r=rmsCalc(arr);
+  return p/(r||1e-8);
+}
+function ampToHeatmap(amplitude) {
+    let ratio = amplitude / 255;
+    let r, g, b;
+    if (ratio < 0.5) {
+        r = Math.floor(ratio * 2 * 255);
+        g = Math.floor(ratio * 2 * 255);
+        b = 255;
+    } else {
+        r = 255;
+        g = Math.floor((1 - (ratio - 0.5) * 2) * 255);
+        b = 0;
+    }
+    return {r: Math.min(255, r), g: Math.min(255, g), b: Math.min(255, b), a: 255};
+}
+</script>
+
+</body>
+</html>
