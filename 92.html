@@ -192,6 +192,7 @@
     <div class="kpi-item"><div>Kurtosis</div><b id="kurtVal">-</b></div>
     <div class="kpi-item"><div>Crest</div><b id="crestVal">-</b></div>
     <div class="kpi-item"><div>Bin</div><b id="freqPerBin">-</b></div>
+    <div class="kpi-item"><div>7x 순위 평균</div><b id="sevenXRankAvg">-</b></div>
   </div>
 
 </div>
@@ -215,6 +216,10 @@ let csvData = [];
 let isRecording = false; 
 // 🔥 CSV 저장 활성화 플래그 (기본값: 해제)
 let isCsvEnabled = false; 
+
+// 🔥 7× 고조파 순위 기록을 위한 배열 추가
+let rankHist = [];
+let finalRankAvg = '-'; // 중지 후에도 값을 유지할 변수
 
 /* UI GET */
 const rpmIn = _id('rpmInput');
@@ -255,6 +260,9 @@ const aiNote  = _id('aiNote');
 const canvas = _id('spectrumCanvas');
 const ctx = canvas.getContext('2d');
 const tooltip = _id('tooltip');
+
+// 🔥 7x 순위 평균 표시 박스
+const rankAvgBox = _id('sevenXRankAvg');
 
 let dbHist=[];
 
@@ -354,6 +362,11 @@ btnStart.onclick = ()=>{
   btnStart.disabled=true;
   btnStop.disabled=false;
   
+  // 🔥 분석 시작 시 순위 기록 초기화
+  rankHist = [];
+  finalRankAvg = '-';
+  rankAvgBox.innerText = finalRankAvg;
+  
   // CSV 저장 자동 시작 (isCsvEnabled 상태에 따라 내부에서 처리)
   startRecording(); 
   
@@ -377,6 +390,13 @@ btnStop.onclick = ()=>{
   
   // CSV 저장 자동 중지 및 다운로드
   stopRecording(); 
+  
+  // 🔥 최종 평균 순위 계산 및 표시 (분석 중지 후에도 유지)
+  if (rankHist.length > 0) {
+      const sum = rankHist.reduce((a, b) => a + b, 0);
+      finalRankAvg = (sum / rankHist.length).toFixed(2);
+      rankAvgBox.innerText = finalRankAvg;
+  }
 };
 
 
@@ -463,15 +483,43 @@ function loop(){
 
   /* 고조파 */
   let hList=[];
-  for(let k=1;k<=maxMul;k++){
+  // maxMul이 7이든 14든, 최대 14배수까지는 계산해야 순위가 정확해짐
+  const maxHarmonicsForRank = 14; 
+  for(let k=1;k<=Math.max(maxMul, maxHarmonicsForRank);k++){
     let f = base*k;
     let idx=Math.round(f/bin);
     let a=freqData[clamp(idx)];
+    // 표시를 위해 hList에는 maxMul까지만 담고, 순위 계산을 위해 별도로 사용
     hList.push({k,f,a,db:ampToDb(a)});
   }
+  // 표시용 hList는 maxMul까지만 유지
+  hList = hList.filter(h => h.k <= maxMul); 
 
-  let h14 = hList.find(h=>h.k===14);
+  let h14 = hList.find(h=>h.k===14); // hList가 14개일 경우 h14가 정의됨
 
+  /* 🔥 7× 고조파 순위 계산 */
+  // 전체 고조파(최대 14개)의 진폭(Amp)을 기준으로 내림차순 정렬하여 순위를 매깁니다.
+  const allHarmonics = [];
+  for(let k=1;k<=maxHarmonicsForRank;k++){
+    let f = base*k;
+    let idx=Math.round(f/bin);
+    let a=freqData[clamp(idx)];
+    allHarmonics.push({k,f,a});
+  }
+  
+  // 진폭을 기준으로 내림차순 정렬
+  allHarmonics.sort((a, b) => b.a - a.a); 
+  
+  // 7× 고조파의 현재 순위 찾기 (1위부터 시작)
+  let rank7x = allHarmonics.findIndex(h => h.k === 7) + 1;
+  rankHist.push(rank7x); // 순위 기록
+  
+  // 현재 평균 순위 계산
+  const rankSum = rankHist.reduce((a, b) => a + b, 0);
+  const rankAvg = (rankSum / rankHist.length).toFixed(2);
+  rankAvgBox.innerText = rankAvg;
+  
+  
   /* AI 판정 */
   let aiL="정상", aiC="ok", msg="";
 
@@ -483,9 +531,10 @@ function loop(){
 
   /* 14× 자동 판정 */
   if(h14){
-    let ratio14 = defAmp>0 ? h14.a/defAmp : 0;
+    let defAmp7x = hList.find(h => h.k === 7)?.a || 0; // 7x 진폭 재참조
+    let ratio14 = defAmp7x > 0 ? h14.a / defAmp7x : 0;
 
-    if(prevDefect && defAmp < prevDefect-4 && ratio14<2){
+    if(prevDefect && defAmp7x < prevDefect-4 && ratio14<2){
       aiL="정상(압력감소패턴)";
       aiC="ok";
       msg="7× 감소 & 14/7 낮음";
@@ -605,8 +654,12 @@ function draw(arr){
     let blade = Number(bladeIn.value);
     let base = (rpm/60)*blade;
     let maxMul = Number(multIn.value); 
+    
+    // 🔥 최대 14배수까지만 선을 그립니다.
+    const maxDrawMul = 14; 
+    const effectiveMaxMul = Math.min(maxMul, maxDrawMul);
 
-    for(let k=1; k <= maxMul; k++){
+    for(let k=1; k <= effectiveMaxMul; k++){
         let f = base * k;
         
         // 주파수가 그래프 최대 주파수 범위 내에 있을 때만 그립니다.
@@ -616,18 +669,22 @@ function draw(arr){
         let x = (idx / endIndex) * w; // 확대된 X축 비율에 맞게 조정
         
         if(x > 0 && x < w){
-            // 1x, 7x, 14x는 더 진하게 표시
-            if(k === 1 || k === 7 || k === 14){
-                ctx.strokeStyle = "#ff4444"; 
-                ctx.lineWidth = 2;
-            } else {
-                ctx.strokeStyle = "rgba(255, 0, 0, 0.7)";
-                ctx.lineWidth = 1;
-            }
-
+            
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, h);
+            
+            // 🔥 1x, 7x, 14x는 비교적 진하게 표시, 나머지는 희미하게
+            if(k === 1 || k === 7 || k === 14){
+                // 주요 고조파: 비교적 진하게
+                ctx.strokeStyle = "rgba(255, 68, 68, 0.7)"; 
+                ctx.lineWidth = 2;
+            } else {
+                // 일반 고조파: 희미하게
+                ctx.strokeStyle = "rgba(255, 0, 0, 0.3)";
+                ctx.lineWidth = 1;
+            }
+
             ctx.stroke();
         }
     }
