@@ -7,10 +7,10 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:linear-gradient(135deg,#2b6cb0,#805ad5);color:#222;min-height:100vh;padding:18px}
-  /* 1. 전체 컨테이너 폭 확장 (1100px -> 1400px) */
+  /* 1. 전체 컨테이너 폭 확장 (레이아웃 흔들림 방지) */
   .container{max-width:1400px;margin:0 auto;background:#fff;border-radius:12px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,0.18)}
   h1{font-size:1.2rem;text-align:center;margin-bottom:12px}
-  /* 2. 그리드 레이아웃 비율 조정 (1fr 440px -> 1fr 700px) */
+  /* 2. 그리드 레이아웃 비율 조정 (그래프 영역 확장) */
   .grid{display:grid;grid-template-columns:1fr 700px;gap:14px;align-items:start}
   .panel{background:#fbfbff;padding:12px;border-radius:10px}
   label{display:block;margin-top:8px;font-weight:600;margin-bottom:6px}
@@ -26,20 +26,31 @@
   .kpi-item{background:#fff;padding:8px;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,0.06);min-width:120px}
   .small{font-size:0.85rem;color:#444}
   canvas{width:100%;height:240px;background:#041023;border-radius:6px;display:block}
-  table{width:100%;border-collapse:collapse;margin-top:8px}
+  /* 4. 테이블 레이아웃 고정 및 dB 열 너비 명시 */
+  table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:8px;
+    table-layout: fixed; /* 테이블 레이아웃 고정 */
+  }
   th,td{padding:6px;border-bottom:1px solid #eee;text-align:left;font-size:0.9rem}
-  /* 4. dB 열 너비 고정: 긴 텍스트로 인한 밀림 방지 */
+  
+  #harmonicsTable th:nth-child(1), #harmonicsTable td:nth-child(1) { width: 50px; min-width: 50px; } /* 배수 */
+  #harmonicsTable th:nth-child(2), #harmonicsTable td:nth-child(2) { width: 120px; min-width: 120px; } /* 주파수(Hz) */
+  #harmonicsTable th:nth-child(3), #harmonicsTable td:nth-child(3) { width: 80px; min-width: 80px; } /* 진폭 */
+
   #harmonicsTable th:last-child, 
   #harmonicsTable td:last-child {
-    width: 80px; 
-    min-width: 80px;
-    text-align: right;
+    width: 85px; 
+    min-width: 85px;
+    text-align: right; 
   }
+
   .badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700;color:#fff;font-size:0.85rem}
   .ok{background:#38a169} .warn{background:#dd6b20} .bad{background:#e53e3e}
   .tooltip{position:absolute;padding:6px 8px;background:rgba(0,0,0,0.85);color:#fff;border-radius:6px;font-size:0.85rem;pointer-events:none;transform:translate(-50%,-120%);white-space:nowrap;z-index:10}
   .muted{color:#666;font-size:0.9rem}
-  /* 3. AI Note 영역 최소 높이 지정: 텍스트 유무에 따른 프레임 흔들림 방지 */
+  /* 3. AI Note 영역 최소 높이 지정 */
   #aiNote { min-height: 20px; }
   @media(max-width:1000px){.grid{grid-template-columns:1fr;}.panel{margin-bottom:12px}}
 </style>
@@ -413,7 +424,7 @@ function analyzeLoop(){
       aiNoteText = '7× 감소 & 14/7 비율 낮음 → 압력/조건 변화로 인한 정상 패턴';
     }
     // 조건 B: 14× 절대적 급증 (dB)
-    if(prevH14dB !== null && (h14.db - prevHH14dB) > 6){
+    if(prevH14dB !== null && (h14.db - prevH14dB) > 6){
       aiLabel = '결함 의심 (14× 급증)';
       aiClass = 'bad';
       aiNoteText = `14× dB 증가: ${ (h14.db - prevH14dB).toFixed(2) } dB`;
@@ -461,7 +472,6 @@ function analyzeLoop(){
 
   // AI 상태 표시
   aiState.innerHTML = `<span class="badge ${aiClass}">${aiLabel}</span>`;
-  // 3. AI Note 영역 고정 (CSS에서 min-height로 처리하고, JS에서는 공백을 삽입하여 처리)
   aiNote.textContent = aiNoteText; 
 
   // 통계 UI
@@ -487,7 +497,7 @@ function analyzeLoop(){
       defectDb: defectDb.toFixed(3),
       diffDb: diffDb.toFixed(3),
       aiLabel: aiLabel,
-      aiNote: aiNoteText.trim(), // 로그에 공백 문자열은 제외
+      aiNote: aiNoteText.trim(),
       rmsDb: rmsDb.toFixed(3),
       peakDb: peakDb.toFixed(3),
       kurtosis: kurt.toFixed(3),
@@ -581,3 +591,4 @@ window.addEventListener('beforeunload', ()=>{ if(audioContext && audioContext.st
 </script>
 </body>
 </html>
+
