@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>모바일 소리 분석기 V2.0 (안정화)</title>
+<title>모바일 소리 분석기 V2.1 (안정화)</title>
 
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
@@ -48,7 +48,7 @@
   .success{background:#1f402f;color:#9ff7c0;}
   .error{background:#402727;color:#ff9d9d;}
   .info{background:#3a3a18;color:#fff7a8;}
-  .warn{background:#403a1a;color:#fff3ac;} /* 노란색 계열의 info/warn */
+  .warn{background:#403a1a;color:#fff3ac;} 
 
   .kpi{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .kpi-item{
@@ -102,7 +102,7 @@
 <body>
 
 <div class="container">
-<h1>📱 모바일 소리 분석기 V2.0</h1>
+<h1>📱 모바일 소리 분석기 V2.1 (안정화)</h1>
 
 <div class="grid">
 
@@ -209,7 +209,7 @@
 
 <script>
 /* =========================================================
-   마이크, FFT, 판정 로직 (V2.0 - 피크 보간 및 SNR 기반 안정화)
+   마이크, FFT, 판정 로직 (V2.1 - NaN 방지 및 안정화)
    ========================================================= */
 
 let audioContext, analyser, source;
@@ -384,7 +384,40 @@ btnStop.onclick = ()=>{
   stopRecording(); 
 };
 
-/* ---------- 피크 보간 및 dB 계산 함수 (개선) ---------- */
+/* ---------- 유틸 함수 (NaN 방지 강화) ---------- */
+
+/** * dB 변환 (0-255 Amplitude -> dB)
+ * @param {number} a - Amplitude 값
+ * @returns {number} dB 값. 0일 경우 -100 dB 반환 (NaN 방지)
+ */
+function ampToDb(a){
+    if(a <= 0) return -100; // NaN 방지를 위해 0 대신 큰 음수 dB 반환
+    return 20*Math.log10(a/255);
+}
+
+function floatNorm(u8){return Array.from(u8,x=>(x-128)/128);}
+function rmsCalc(arr){return Math.sqrt(arr.reduce((s,x)=>s+x*x,0)/(arr.length||1));}
+
+function kurtCalc(arr){
+  let m=arr.reduce((s,x)=>s+x,0)/arr.length;
+  let m2=0,m4=0;arr.forEach(x=>{let d=x-m;m2+=d*d;m4+=d*d*d*d;});
+  m2/=arr.length; 
+  m4/=arr.length; 
+  // 분모가 0에 가까울 때 NaN 방지
+  return m4 / (m2*m2 + 1e-12); 
+}
+
+function crestCalc(arr){
+  let p=Math.max(...arr.map(x=>Math.abs(x)));
+  let r=rmsCalc(arr);
+  // 분모가 0에 가까울 때 NaN 방지
+  return p/(r||1e-8);
+}
+
+function clamp(v, N){return Math.max(0,Math.min(N-1,v));}
+
+
+/* ---------- 피크 보간 및 dB 계산 함수 (NaN 방지 강화) ---------- */
 
 /**
  * Parabolic Interpolation을 사용하여 실제 피크 진폭과 주파수 인덱스를 추정합니다.
@@ -395,19 +428,28 @@ btnStop.onclick = ()=>{
  */
 function findPeakAmplitude(arr, idx, binHz){
     const N = arr.length;
-    if(idx < 1 || idx >= N - 1) { // 경계값 예외 처리
+    
+    // 경계값 처리: 양쪽 이웃이 없으면 보간 없이 중앙값 사용
+    if(idx < 1 || idx >= N - 1) { 
         const a = arr[clamp(idx, N)];
         return { amp: a, f: idx * binHz, db: ampToDb(a), noiseDb: -100 };
     }
     
+    // 1. NaN 방지: 진폭이 0인 경우 최소 1로 취급하여 Log(0) 오류 방지
+    const A1 = Math.max(arr[idx - 1], 1); 
+    const A2 = Math.max(arr[idx], 1);
+    const A3 = Math.max(arr[idx + 1], 1); 
+
     // 이웃한 3개 Bin의 진폭을 dB 스케일로 변환
-    const y1 = 20 * Math.log10(arr[idx - 1] / 255 + 1e-12); // 이전 Bin
-    const y2 = 20 * Math.log10(arr[idx] / 255 + 1e-12);     // 중앙 Bin (Peak)
-    const y3 = 20 * Math.log10(arr[idx + 1] / 255 + 1e-12); // 다음 Bin
+    const y1 = 20 * Math.log10(A1 / 255); 
+    const y2 = 20 * Math.log10(A2 / 255);     
+    const y3 = 20 * Math.log10(A3 / 255); 
 
     // 포물선 보간 (Parabolic Interpolation)
-    // d = 피크 위치의 보정된 인덱스 (d는 -0.5 ~ +0.5 범위)
-    const d = 0.5 * (y1 - y3) / (y1 - 2 * y2 + y3);
+    let d_denom = y1 - 2 * y2 + y3;
+    
+    // 2. NaN 방지: 분모가 0에 가까우면 d를 0으로 설정
+    const d = (Math.abs(d_denom) < 1e-12) ? 0 : 0.5 * (y1 - y3) / d_denom;
     
     // 보간된 피크 dB 값
     const peakDb = y2 - 0.25 * (y1 - y3) * d;
@@ -416,11 +458,10 @@ function findPeakAmplitude(arr, idx, binHz){
     const correctedIdx = idx + d;
     const correctedFreq = correctedIdx * binHz;
     
-    // dB를 다시 0-255 스케일로 변환 (UI 표시용)
+    // dB를 다시 0-255 스케일로 변환
     const correctedAmp = Math.pow(10, peakDb / 20) * 255;
     
-    // 인접 노이즈 레벨 측정 (피크 주변 3개 Bin 제외한 평균)
-    // 5개 Bin (idx +/- 2)을 노이즈 측정 범위로 사용
+    // 인접 노이즈 레벨 측정
     let noiseBins = [];
     for(let i = idx - 5; i <= idx + 5; i++){
         if (i < 0 || i >= N || (i >= idx - 1 && i <= idx + 1)) continue;
@@ -428,7 +469,7 @@ function findPeakAmplitude(arr, idx, binHz){
     }
     // 노이즈의 RMS 값 계산 (0-255 스케일)
     const noiseRms = Math.sqrt(noiseBins.reduce((sum, a) => sum + a * a, 0) / (noiseBins.length || 1));
-    const noiseDb = noiseRms > 0 ? 20 * Math.log10(noiseRms / 255) : -100; // dB 변환
+    const noiseDb = noiseRms > 0 ? 20 * Math.log10(noiseRms / 255) : -100; 
     
     return { 
         amp: correctedAmp, 
@@ -444,32 +485,28 @@ function findPeakAmplitude(arr, idx, binHz){
  * @returns {number} SNR 기반의 dB 차이 (Peak - Noise)
  */
 function calcSnrDb(peakDb, noiseDb){
-    // 노이즈 레벨 대비 피크가 얼마나 높은지 측정.
-    // 이는 환경 소음의 절대 레벨 변화에 덜 민감합니다.
     return peakDb - noiseDb;
 }
 
-function clamp(v, N){return Math.max(0,Math.min(N-1,v));}
-function ampToDb(a){return 20*Math.log10((a||1)/255);}
-function floatNorm(u8){return Array.from(u8,x=>(x-128)/128);}
-function rmsCalc(arr){return Math.sqrt(arr.reduce((s,x)=>s+x*x,0)/(arr.length||1));}
-function kurtCalc(arr){
-  let m=arr.reduce((s,x)=>s+x,0)/arr.length;
-  let m2=0,m4=0;arr.forEach(x=>{let d=x-m;m2+=d*d;m4+=d*d*d*d;});
-  m2/=arr.length; m4/=arr.length; return m4/(m2*m2+1e-12);
-}
-function crestCalc(arr){
-  let p=Math.max(...arr.map(x=>Math.abs(x)));
-  let r=rmsCalc(arr);
-  return p/(r||1e-8);
-}
+
 /* ---------- 분석 루프 ---------- */
 let t0=0;
 function loop(){
   if(!isRun) return; 
 
+  // FFT 크기가 변경되었는지 확인 및 업데이트
+  if (analyser && analyser.fftSize !== Number(fftIn.value)) {
+    analyser.fftSize = Number(fftIn.value);
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+    _id('freqPerBin').innerText = (audioContext.sampleRate / analyser.fftSize).toFixed(2);
+  }
+  
   analyser.getByteFrequencyData(freqData);
   analyser.getByteTimeDomainData(timeData);
+
+  // NaN 방지: 오디오 컨텍스트가 정의되었는지 확인
+  if(!audioContext || !analyser) return; 
 
   let sr = audioContext.sampleRate;
   let fftN = analyser.fftSize;
@@ -494,10 +531,8 @@ function loop(){
   const baseSnrDb = calcSnrDb(basePeak.db, basePeak.noiseDb);
   const defectSnrDb = calcSnrDb(defectPeak.db, defectPeak.noiseDb);
   
-  // SNR 기반으로 결함 판정에 사용할 Diff dB (안정적)
   let diff = Math.abs(defectSnrDb - baseSnrDb);
   
-  // 전체 평균 노이즈 레벨을 참조용으로 계산
   const overallNoiseDb = Math.round((basePeak.noiseDb + defectPeak.noiseDb) / 2);
 
   /* 이동평균 */
@@ -506,7 +541,7 @@ function loop(){
   if(dbHist.length>ma) dbHist.shift();
   let avg = dbHist.reduce((a,b)=>a+b,0)/(dbHist.length||1);
 
-  /* RMS, Peak, Kurtosis, Crest Factor (기존 로직과 동일) */
+  /* RMS, Peak, Kurtosis, Crest Factor 계산 */
   let tArr = floatNorm(timeData);
   let rms = rmsCalc(tArr);
   let rmsDb = 20*Math.log10(rms||1e-8);
@@ -520,7 +555,6 @@ function loop(){
   for(let k=1;k<=maxMul;k++){
     let f = base*k;
     let idx=Math.round(f/bin);
-    // 고조파에도 보간 적용 (데이터 안정성 확보)
     const hPeak = findPeakAmplitude(freqData, idx, bin); 
     const hSnrDb = calcSnrDb(hPeak.db, hPeak.noiseDb);
     hList.push({k, f: hPeak.f, a: hPeak.amp, db: hSnrDb});
@@ -528,19 +562,17 @@ function loop(){
 
   let h14 = hList.find(h=>h.k===14);
 
-  /* AI 판정 */
+  /* AI 판정 (SNR 기반 Diff dB 사용) */
   let aiL="정상", aiC="ok", msg="";
 
   let warnT=Number(warnIn.value);
   let badT=Number(badIn.value);
 
-  // 판정 기준: SNR 기반 Diff dB 사용
   if(diff>badT){ aiL="결함 의심"; aiC="bad"; msg=`SNR dB차이 ${diff.toFixed(2)}`; }
   else if(diff>warnT){ aiL="주의"; aiC="warn"; msg=`SNR dB차이 ${diff.toFixed(2)}`; }
 
-  /* 14× 자동 판정 (SNR dB 사용) */
+  /* 14× 자동 판정 */
   if(h14){
-    // h14.a는 보간된 Amplitude (0-255)
     let ratio14 = defectPeak.amp > 0 ? h14.a / defectPeak.amp : 0; 
     
     if(prevDefect && defectPeak.amp < prevDefect-4 && ratio14<2){
@@ -560,11 +592,18 @@ function loop(){
     }
   }
 
-  /* RPM 트렌드 (기존 로직과 동일) */
+  /* RPM 트렌드 */
   if(prevRpm){
     let sens=Number(rpmTrendSens.value);
     let rchg=(rpm-prevRpm)/(prevRpm||1);
-    // ... RPM 트렌드 로직 생략 (기존 코드와 동일)
+    if(Math.abs(rchg)>sens){
+      if(rchg>0 && rmsDb>prevRms+0.5){
+        msg="RPM↑ → RMS↑ (정상)";
+      }
+      if(rchg<0 && rmsDb<prevRms-0.5){
+        msg="RPM↓ → RMS↓ (정상)";
+      }
+    }
   }
 
   /* UI 업데이트 */
@@ -590,13 +629,13 @@ function loop(){
     harmTable.innerHTML+=`<tr><td>${h.k}×</td><td>${h.f.toFixed(1)}</td><td>${Math.round(h.a)}</td><td>${h.db.toFixed(2)}</td></tr>`;
   });
 
-  /* CSV 데이터 기록 (DiffDb_SNR 사용) */
+  /* CSV 데이터 기록 */
   if(isRecording){
       const timeElapsed = (performance.now()-t0)/1000;
       const row = [
           timeElapsed.toFixed(2), 
           rpm, blade, 
-          basePeak.f.toFixed(2), defectPeak.f.toFixed(2), // 보정된 주파수
+          basePeak.f.toFixed(2), defectPeak.f.toFixed(2),
           baseSnrDb.toFixed(2), defectSnrDb.toFixed(2), 
           diff.toFixed(2), avg.toFixed(2), 
           rmsDb.toFixed(2), peakDb.toFixed(2), 
@@ -610,15 +649,15 @@ function loop(){
   draw(freqData);
 
   /* prev 업데이트 */
-  prevDefect = defectPeak.amp; // Amplitude로 업데이트
-  prevH14 = h14 ? h14.db : null; // SNR dB로 업데이트
+  prevDefect = defectPeak.amp; 
+  prevH14 = h14 ? h14.db : null; 
   prevRms = rmsDb;
   prevRpm = rpm;
 
   raf=requestAnimationFrame(loop);
 }
 
-/* ---------- FFT 그리기 및 Tooltip (기존 로직과 동일) ---------- */
+/* ---------- FFT 그리기 및 Tooltip ---------- */
 function draw(arr){
   setCanvasSize(); 
   
@@ -626,9 +665,10 @@ function draw(arr){
   ctx.clearRect(0,0,w,h);
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
 
-  // 최대 주파수 범위 계산
-  let sr = audioContext ? audioContext.sampleRate : 44100;
-  let fftN = analyser ? analyser.fftSize : 4096;
+  if(!audioContext || !analyser) return; 
+
+  let sr = audioContext.sampleRate;
+  let fftN = analyser.fftSize;
   let nyquist = sr/2;
   let bin = sr/fftN;
   let maxFreqInput = Number(maxFreqIn.value);
@@ -647,34 +687,32 @@ function draw(arr){
   ctx.stroke();
 
   // 2. 기본 주파수 선(1x ~ maxMul x) 그리기
-  if(audioContext && analyser){
-    let rpm = Number(rpmIn.value);
-    let blade = Number(bladeIn.value);
-    let base = (rpm/60)*blade;
-    let maxMul = Number(multIn.value); 
+  let rpm = Number(rpmIn.value);
+  let blade = Number(bladeCountInput.value);
+  let base = (rpm/60)*blade;
+  let maxMul = Number(multIn.value); 
 
-    for(let k=1; k <= maxMul; k++){
-        let f = base * k;
-        if(f > graphMaxFreq) continue; 
-        
-        let idx = Math.round(f / bin); 
-        let x = (idx / endIndex) * w;
-        
-        if(x > 0 && x < w){
-            if(k === 1 || k === 7 || k === 14){
-                ctx.strokeStyle = "#ff4444"; 
-                ctx.lineWidth = 2;
-            } else {
-                ctx.strokeStyle = "rgba(255, 0, 0, 0.7)";
-                ctx.lineWidth = 1;
-            }
+  for(let k=1; k <= maxMul; k++){
+      let f = base * k;
+      if(f > graphMaxFreq) continue; 
+      
+      let idx = Math.round(f / bin); 
+      let x = (idx / endIndex) * w;
+      
+      if(x > 0 && x < w){
+          if(k === 1 || k === 7 || k === 14){
+              ctx.strokeStyle = "#ff4444"; 
+              ctx.lineWidth = 2;
+          } else {
+              ctx.strokeStyle = "rgba(255, 0, 0, 0.7)";
+              ctx.lineWidth = 1;
+          }
 
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, h);
-            ctx.stroke();
-        }
-    }
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+          ctx.stroke();
+      }
   }
 }
 
