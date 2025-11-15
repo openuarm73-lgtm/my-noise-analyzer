@@ -57,7 +57,7 @@
       <label>FFT 크기</label>
       <select id="fftSizeSelect">
         <option value="2048">2048</option>
-        <option value="4096" selected>4096</option>
+        <option value="4096" selected>2048</option>
         <option value="8192">8192</option>
       </select>
 
@@ -76,7 +76,7 @@
         </div>
         <div style="width:140px">
           <label>경보음</label>
-          <select id="alarmMode"><option value="off">끄기</option><option value="beep" selected>비프음</option></select>
+          <select id="alarmMode"><option value="off" selected>끄기</option><option value="beep" >비프음</option></select>
         </div>
       </div>
 
@@ -564,3 +564,4 @@ window.addEventListener('beforeunload', ()=>{ if(audioContext && audioContext.st
 </script>
 </body>
 </html>
+
