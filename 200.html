@@ -226,10 +226,10 @@ let isRun=false;
 let raf;
 
 // 펠릿타이저 전용 상태 저장 변수
-let prevWearDb = null; // 이전 N× dB 값
-let prevBaseDb = null; // 이전 1x dB 값
-let prevWearMultipleAmp = null; // 이전 N× 진폭
-let prevDoubleWearMultipleAmp = null; // 이전 2N× 진폭
+let prevWearDb = null; 
+let prevBaseDb = null;
+let prevWearMultipleAmp = null;
+let prevDoubleWearMultipleAmp = null;
 
 // 고급 기능 데이터
 let peakHoldData = []; 
@@ -244,7 +244,7 @@ let lastPanX = 0;
 /* UI GET */
 const rpmIn = _id('rpmInput');
 const bladeIn = _id('bladeCountInput');
-const wearMultIn = _id('wearMultipleInput'); // N× 마모 배수 입력
+const wearMultIn = _id('wearMultipleInput'); 
 const fftIn = _id('fftSizeSelect');
 
 const btnMic = _id('connectBtn');
@@ -261,7 +261,7 @@ const timeBox = _id('timeCounter');
 const rmsBox = _id('rmsVal');
 const kurtBox = _id('kurtVal');
 const crestBox = _id('crestVal'); 
-const wearIndexBox = _id('wearIndex'); // N× 하모닉 지수 표시
+const wearIndexBox = _id('wearIndex');
 
 const freqRes = _id('freqResult');
 const harmTable = _id('harmonicsTable');
@@ -282,7 +282,6 @@ function _id(x){return document.getElementById(x);}
 
 /* 캔버스 크기 설정 */
 function setCanvasSize() {
-  // 고정된 왼쪽 패널 덕분에 오른쪽 캔버스 너비는 안정적입니다.
   const containerWidth = canvas.parentNode.clientWidth;
   
   canvas.width = containerWidth;
@@ -304,7 +303,6 @@ btnMic.onclick = async ()=>{
     freqData = new Uint8Array(analyser.frequencyBinCount);
     timeData = new Uint8Array(analyser.fftSize);
     
-    // 줌 범위 초기화 (3kHz ~ 6kHz 포함, 최대 8kHz까지)
     const sr = audioContext.sampleRate;
     const bin = sr / analyser.fftSize;
     const startHz = 0;
@@ -313,7 +311,6 @@ btnMic.onclick = async ()=>{
     viewStartIndex = Math.round(startHz / bin);
     viewEndIndex = Math.min(analyser.frequencyBinCount, Math.round(endHz / bin));
     
-    // Peak Hold & Reference 초기화
     peakHoldData = new Uint8Array(analyser.frequencyBinCount);
     referenceSpectrumData = null;
 
@@ -342,7 +339,6 @@ btnStart.onclick = ()=>{
   
   t0=performance.now();
   
-  // 초기화
   if (analyser) {
     peakHoldData = new Uint8Array(analyser.frequencyBinCount);
   }
@@ -380,7 +376,7 @@ resetZoomBtn.onclick = () => {
         const sr = audioContext.sampleRate;
         const bin = sr / analyser.fftSize;
         viewStartIndex = Math.round(0 / bin);
-        viewEndIndex = Math.min(analyser.frequencyBinCount, Math.round(8000 / bin)); // 8kHz까지 초기화
+        viewEndIndex = Math.min(analyser.frequencyBinCount, Math.round(8000 / bin));
         statusBox.className = 'status info';
         statusBox.innerText = '확대/이동이 0Hz ~ 8kHz로 초기화되었습니다.';
     }
@@ -413,8 +409,8 @@ function loop(){
 
   let rpm = Number(rpmIn.value);
   let blade = Number(bladeIn.value);
-  let wearM = Number(wearMultIn.value); // N (주요 마모 배수)
-  let maxMul = 14; // 테이블 표시는 최대 14x까지
+  let wearM = Number(wearMultIn.value);
+  let maxMul = 14; 
 
   let baseHz = (rpm/60)*blade;
   let wearHz = baseHz * wearM;
@@ -432,7 +428,7 @@ function loop(){
   let wearDb  = ampToDb(wearAmp);
   let doubleWearDb  = ampToDb(doubleWearAmp);
 
-  let wearDiffDb = wearDb - baseDb; // 🔥 핵심 마모 지수: N× dB - 1× dB
+  let wearDiffDb = wearDb - baseDb; 
 
   /* RMS, Kurtosis, Crest */
   let tArr = floatNorm(timeData);
@@ -448,7 +444,7 @@ function loop(){
     let idx=Math.round(f/bin);
     let a=freqData[clamp(idx)];
     let db = ampToDb(a);
-    let ratioToWear = (wearDb > -100) ? (db - wearDb) : 0; // N× 대비 dB 차이
+    let ratioToWear = (wearDb > -100) ? (db - wearDb) : 0;
     hList.push({k,f,a,db,ratioToWear});
   }
 
@@ -475,10 +471,8 @@ function loop(){
       const wearDrop = prevWearDb - wearDb;
       const baseDrop = prevBaseDb - baseDb;
       
-      // N× (7x) dB가 3dB 이상 하락했고, 1x 하락보다 N× 하락이 더 큰 경우 (압력 감소 시그널)
       if(wearDrop > 3 && wearDrop > baseDrop){
         
-        // 2N×(14x)가 N×(7x) 대비 상대적으로 커 보이는지 확인 (진폭 비율 사용)
         const wearAmpToDoubleRatio = wearAmp > 0 ? doubleWearAmp / wearAmp : 0;
         
         if (wearAmpToDoubleRatio > 2) { 
@@ -498,8 +492,8 @@ function loop(){
   timeBox.innerText = Math.floor((performance.now()-t0)/1000)+"s";
   rmsBox.innerText = rmsDb.toFixed(2)+" dB";
   kurtBox.innerText = kurt.toFixed(2);
-  crestBox.innerText = crestCalc.toFixed(2);
-  wearIndexBox.innerText = wearDiffDb.toFixed(2)+" dB"; // 🔥 핵심 지수
+  crestBox.innerText = crest.toFixed(2);
+  wearIndexBox.innerText = wearDiffDb.toFixed(2)+" dB"; 
 
   freqRes.innerHTML =
     `1× (기본): ${Math.round(baseHz)}Hz / ${baseDb.toFixed(2)}dB<br>`+
@@ -511,10 +505,9 @@ function loop(){
 
   harmTable.innerHTML="";
   hList.forEach(h=>{
-    // N× 및 2N×는 특별히 강조
     let style = "";
     if (h.k === wearM) style = 'style="background:#8b4513; color:#fff;"';
-    if (h.k === wearM * 2) style = 'style="background:#5e326b; color:#fff;"'; // 2N×는 보라색
+    if (h.k === wearM * 2) style = 'style="background:#5e326b; color:#fff;"';
 
     harmTable.innerHTML+=`<tr ${style}><td>${h.k}×</td><td>${Math.round(h.f)}</td><td>${h.a}</td><td>${h.db.toFixed(2)}</td><td>${h.ratioToWear.toFixed(2)}</td></tr>`;
   });
@@ -533,7 +526,7 @@ function loop(){
   raf=requestAnimationFrame(loop);
 }
 
-/* ---------- 캔버스 그리기 함수 (로직 유지) ---------- */
+/* ---------- 캔버스 그리기 함수 ---------- */
 
 /* 시간 파형 그리기 */
 function drawTimeWaveform(arr) {
@@ -588,6 +581,9 @@ function drawSpectrogram(arr) {
     const startIdx = viewStartIndex;
     const endIdx = viewEndIndex;
     const viewRange = endIdx - startIdx;
+    
+    // FIX: viewRange가 유효하지 않으면 그리지 않고 종료
+    if (viewRange <= 0) return;
 
     for (let x = 0; x < specWidth; x++) { 
         const binFraction = (x / specWidth) * viewRange + startIdx; 
@@ -618,10 +614,14 @@ function drawFFT(arr){
   const endIdx = viewEndIndex;
   const viewRange = endIdx - startIdx;
 
+  // FIX: viewRange가 유효하지 않으면 그리지 않고 종료
+  if (viewRange <= 0) return;
+  
   const drawLine = (data, color, lineWidth) => {
     ctx.beginPath();
     for(let i=startIdx;i<endIdx;i++){
-        const x=(i-startIdx)/viewRange*w;
+        // viewRange가 0이 아니므로 안전하게 계산
+        const x=(i-startIdx)/viewRange*w; 
         const y=h - (data[i]/255)*h;
         if(i===startIdx) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     }
@@ -781,6 +781,9 @@ canvas.addEventListener('mousemove',e=>{
   const startIdx = viewStartIndex;
   const endIdx = viewEndIndex;
   const viewRange = endIdx - startIdx;
+  
+  if (viewRange <= 0) { tooltip.style.display="none"; return; }
+  
   let idx = startIdx + Math.floor((x/w)*viewRange);
   idx = clamp(idx);
   let sr=audioContext.sampleRate;
