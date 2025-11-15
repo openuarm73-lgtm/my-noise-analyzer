@@ -1,51 +1,133 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>소리 분석기 — 완전판 (모든 기능)</title>
+<title>소리 분석기 — 7×/14× AI 판정 고정 버전</title>
+
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{
-    font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR","Apple SD Gothic Neo",sans-serif;
+    font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
     background:linear-gradient(135deg,#2b6cb0,#805ad5);
-    color:#222;min-height:100vh;padding:18px;
+    color:#222;
+    min-height:100vh;
+    padding:18px;
   }
-  .container{max-width:1100px;margin:0 auto;background:#fff;border-radius:12px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,0.18)}
+  .container{
+    max-width:1100px;
+    margin:0 auto;
+    background:#fff;
+    border-radius:12px;
+    padding:18px;
+    box-shadow:0 12px 40px rgba(0,0,0,0.18)
+  }
   h1{font-size:1.3rem;text-align:center;margin-bottom:12px}
+
   .grid{display:grid;grid-template-columns:1fr 420px;gap:14px;align-items:start}
   .panel{background:#fbfbff;padding:12px;border-radius:10px}
+
   label{display:block;margin-top:8px;font-weight:600;margin-bottom:6px}
-  input[type=number], input[type=text], select {width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef;font-size:0.95rem}
-  .row{display:flex;gap:8px}
+
+  input[type=number], input[type=text], select{
+    width:100%;
+    padding:8px;
+    border-radius:8px;
+    border:1px solid #e6e9ef;
+    font-size:0.95rem
+  }
+
   .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-  button{padding:9px 12px;border-radius:8px;border:none;font-weight:700;color:#fff;cursor:pointer}
-  #connectBtn{background:#38a169} #startButton{background:#3182ce} #stopButton{background:#e53e3e}
+  button{
+    padding:9px 12px;
+    border-radius:8px;
+    border:none;
+    font-weight:700;
+    color:#fff;
+    cursor:pointer
+  }
+  #connectBtn{background:#38a169}
+  #startButton{background:#3182ce}
+  #stopButton{background:#e53e3e}
   button:disabled{background:#9aa3b2;cursor:not-allowed}
+
   .status{margin-top:10px;padding:10px;border-radius:8px;font-size:0.9rem}
   .status.success{background:#e6fffa;color:#22543d}
   .status.error{background:#fff5f5;color:#822727}
   .status.info{background:#fffff0;color:#735c0f}
+
   .kpi{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .kpi-item{background:#fff;padding:8px;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,0.06);min-width:120px}
+  .kpi-item{
+    background:#fff;padding:8px;border-radius:8px;
+    box-shadow:0 4px 8px rgba(0,0,0,0.06);min-width:120px
+  }
   .small{font-size:0.85rem;color:#444}
-  canvas{width:100%;height:200px;background:#041023;border-radius:6px;display:block}
-  table{width:100%;border-collapse:collapse;margin-top:8px}
-  th,td{padding:6px;border-bottom:1px solid #eee;text-align:left;font-size:0.9rem}
-  .badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700;color:#fff;font-size:0.85rem}
-  .ok{background:#38a169} .warn{background:#dd6b20} .bad{background:#e53e3e}
-  .tooltip{position:absolute;padding:6px 8px;background:rgba(0,0,0,0.8);color:#fff;border-radius:6px;font-size:0.85rem;pointer-events:none;transform:translate(-50%,-120%);white-space:nowrap;z-index:10}
-  .controls-row{display:flex;gap:8px;align-items:center}
-  .muted{color:#666;font-size:0.9rem}
-  @media(max-width:1000px){.grid{grid-template-columns:1fr;}.panel{margin-bottom:12px}}
+
+  canvas{
+    width:100%;height:200px;background:#041023;
+    border-radius:6px;display:block
+  }
+
+  table{
+    width:100%;border-collapse:collapse;margin-top:8px
+  }
+  th,td{
+    padding:6px;border-bottom:1px solid #eee;text-align:left;font-size:0.9rem
+  }
+
+  .badge{
+    display:inline-block;
+    padding:4px 8px;border-radius:999px;
+    font-weight:700;color:#fff;font-size:0.85rem
+  }
+  .ok{background:#38a169}
+  .warn{background:#dd6b20}
+  .bad{background:#e53e3e}
+
+  .tooltip{
+    position:absolute;padding:6px 8px;background:rgba(0,0,0,0.85);
+    color:#fff;border-radius:6px;font-size:0.85rem;
+    pointer-events:none;transform:translate(-50%,-120%);
+    white-space:nowrap;z-index:10
+  }
+
+  /* ============================================
+     🔥 화면 흔들림 0%를 위한 완전 고정 AI 박스
+     ============================================ */
+  #aiBox {
+    height: 120px;       /* 전체 AI 영역 자체 고정 */
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  #aiState {
+    height: 34px;        /* 상태 라벨 고정 */
+    display:flex;
+    align-items:center;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+  }
+  #aiNote {
+    height: 70px;        /* 상세 메시지 고정 */
+    display:flex;
+    align-items:center;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    font-size:0.86rem;
+    color:#333;
+  }
+
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>🔊 소리 분석기 — 완전판 (마이크·7×결함·그래프·로그·알람)</h1>
+  
+  <div class="container">
+  <h1>🔊 소리 분석기 — 7×/14× AI 판정 고정 버전</h1>
 
   <div class="grid">
-    <!-- LEFT: 컨트롤 & 결과 -->
+    <!-- LEFT -->
     <div class="panel">
       <label>현재 RPM</label>
       <input type="number" id="rpmInput" value="1500" min="1">
@@ -53,7 +135,13 @@
       <label>기본 주파수 배수 (블레이드 수)</label>
       <input type="number" id="bladeCountInput" value="20" min="1">
 
-      <div class="small" style="margin-top:6px">결함주파수는 자동으로 <b>기본주파수 × 7</b> 으로 계산됩니다.</div>
+      <label>분석 배수 범위</label>
+      <select id="multipleSelect">
+        <option value="7" selected>1× ~ 7× (기본)</option>
+        <option value="14">1× ~ 14× (확장 — 14× 판정 포함)</option>
+      </select>
+
+      <div class="small" style="margin-top:6px">결함주파수는 기본주파수의 <b>7×</b>로 고정됩니다. (표/판정은 선택한 배수 범위까지 계산)</div>
 
       <label>FFT 크기</label>
       <select id="fftSizeSelect">
@@ -62,7 +150,7 @@
         <option value="8192">8192</option>
       </select>
 
-      <div class="btns" style="margin-top:10px">
+      <div class="btns">
         <button id="connectBtn">🎤 마이크 연결</button>
         <button id="startButton" disabled>📊 분석 시작</button>
         <button id="stopButton" disabled>⏹ 분석 중지</button>
@@ -70,84 +158,81 @@
 
       <div id="status" class="status info">마이크 연결 버튼을 눌러주세요.</div>
 
-      <div style="margin-top:10px" class="controls-row">
+      <div style="display:flex;gap:8px;margin-top:8px">
         <div style="flex:1">
           <label>이동평균 길이 (프레임)</label>
           <input type="number" id="maLen" value="10" min="1">
         </div>
-        <div style="width:120px">
+        <div style="width:140px">
           <label>경보음</label>
-          <select id="alarmMode">
-            <option value="off">끄기</option>
-            <option value="beep" selected>비프음</option>
-          </select>
+          <select id="alarmMode"><option value="off">끄기</option><option value="beep" selected>비프음</option></select>
         </div>
       </div>
 
-      <div style="margin-top:8px" class="controls-row">
+      <div style="display:flex;gap:8px;margin-top:8px">
         <div style="flex:1">
           <label>AI 판정 임계값 (dB)</label>
-          <div class="row">
-            <input type="number" id="warnThreshold" value="3" min="0" step="0.1" title="주의 기준 (dB)">
-            <input type="number" id="badThreshold" value="8" min="0" step="0.1" title="결함 기준 (dB)">
+          <div style="display:flex;gap:6px">
+            <input type="number" id="warnThreshold" value="3" min="0" step="0.1">
+            <input type="number" id="badThreshold" value="8" min="0" step="0.1">
           </div>
           <div class="small" style="margin-top:6px">diff(dB) &gt; 주의 &gt; 결함 (값 변경 가능)</div>
         </div>
         <div style="width:160px">
+          <label>RPM 트렌드 감지 (민감도)</label>
+          <select id="rpmTrendSens">
+            <option value="0.01">민감(1%)</option>
+            <option value="0.03" selected>보통(3%)</option>
+            <option value="0.1">완만(10%)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="flex:1">
           <label>로그 수집</label>
-          <div class="row">
+          <div style="display:flex;gap:6px">
             <button id="toggleLogBtn" style="background:#718096">수집 시작</button>
             <button id="downloadCsvBtn" style="background:#2b6cb0">CSV 다운로드</button>
           </div>
         </div>
-      </div>
-
-      <div class="kpi">
-        <div class="kpi-item">
-          <div class="small">분석시간</div>
-          <div id="timeCounter" style="font-weight:700">0 s</div>
-        </div>
-        <div class="kpi-item">
-          <div class="small">이동평균 (dB)</div>
-          <div id="movingAvg" style="font-weight:700">-</div>
-        </div>
-        <div class="kpi-item">
-          <div class="small">전체 RMS (dB)</div>
-          <div id="rmsVal" style="font-weight:700">-</div>
-        </div>
-        <div class="kpi-item">
-          <div class="small">Peak (dB)</div>
-          <div id="peakVal" style="font-weight:700">-</div>
+        <div style="width:160px">
+          <label>기타</label>
+          <button id="resetPrevBtn" style="background:#6b7280">이전값 리셋</button>
         </div>
       </div>
 
-      <div style="margin-top:10px" class="panel">
-        <div class="small">기본 / 결함 (7×) 주파수</div>
+      <div class="kpi" style="margin-top:12px">
+        <div class="kpi-item"><div class="small">분석시간</div><div id="timeCounter" style="font-weight:700">0 s</div></div>
+        <div class="kpi-item"><div class="small">이동평균 (dB)</div><div id="movingAvg" style="font-weight:700">-</div></div>
+        <div class="kpi-item"><div class="small">전체 RMS (dB)</div><div id="rmsVal" style="font-weight:700">-</div></div>
+        <div class="kpi-item"><div class="small">Peak (dB)</div><div id="peakVal" style="font-weight:700">-</div></div>
+      </div>
+
+      <div style="margin-top:12px" class="panel">
+        <div class="small">기본 / 결함(7×)</div>
         <div id="freqResult" style="margin-top:6px;font-weight:700">-</div>
 
-        <div class="small" style="margin-top:8px">고조파 (1× ~ 7×)</div>
-        <table id="harmonicsTable">
-          <thead><tr><th>배수</th><th>주파수(Hz)</th><th>진폭</th><th>dB</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <div class="small" style="margin-top:10px">고조파 (선택한 배수 범위)</div>
+        <table id="harmonicsTable"><thead><tr><th>배수</th><th>주파수(Hz)</th><th>진폭</th><th>dB</th></tr></thead><tbody></tbody></table>
 
-        <div style="margin-top:8px">
-          <div class="small">AI 상태판정</div>
-          <div id="aiState" style="margin-top:6px"><span class="badge ok">-</span></div>
+        <div id="aiBox">
+          <div id="aiState"><span class="badge ok">-</span></div>
+          <div id="aiNote">AI 상세 메시지가 이곳에 표시됩니다.</div>
         </div>
 
       </div>
 
     </div>
 
-    <!-- RIGHT: 그래프 및 세부 -->
+    <!-- RIGHT: 그래프 -->
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <div class="small">실시간 스펙트럼 (마우스 오버: 주파수/진폭 표시)</div>
+        <div class="small">실시간 스펙트럼 (마우스 오버: 주파수/진폭)</div>
         <div class="small muted">샘플레이트: <span id="sr">-</span> / FFT: <span id="fftInfo">-</span></div>
       </div>
       <div style="position:relative;margin-top:8px">
-        <canvas id="spectrumCanvas" width="800" height="240"></canvas>
+        <canvas id="spectrumCanvas" width="780" height="260"></canvas>
         <div id="tooltip" class="tooltip" style="display:none"></div>
       </div>
 
@@ -157,30 +242,37 @@
         <div class="kpi-item"><div class="small">빈당 주파수</div><div id="freqPerBin" style="font-weight:700">-</div></div>
       </div>
 
-      <div style="margin-top:10px" class="small muted">팁: 브라우저가 마이크 권한을 요구하면 '허용'하세요. 로컬에서 실행 시 `http://localhost:8000/20.html` 형태로 열면 안전합니다.</div>
+      <div class="small muted" style="margin-top:10px">팁: 브라우저가 마이크 권한을 요구하면 '허용'하세요. 로컬에서 실행 시 <code>http://localhost:8000/20.html</code>로 열면 안정적입니다.</div>
     </div>
 
   </div>
 </div>
 
 <script>
-/* ---------------- 변수 및 UI 참조 ---------------- */
+/* ---------------- 변수 선언 ---------------- */
 let audioContext=null, analyser=null, micSource=null, freqData=null, timeData=null;
 let isAnalyzing=false, rafId=null, startTime=null;
 let dbHistory=[], logRecords=[], logging=false;
 
+/* 이전 프레임 값 추적 (판정용) */
+let prevDefectAmp = null, prevH14dB = null, prevRmsDb = null, prevRpm = null;
+
+/* UI 요소 */
 const connectBtn = document.getElementById('connectBtn');
 const startBtn = document.getElementById('startButton');
 const stopBtn = document.getElementById('stopButton');
 const statusDiv = document.getElementById('status');
 const rpmInput = document.getElementById('rpmInput');
 const bladeInput = document.getElementById('bladeCountInput');
+const multipleSelect = document.getElementById('multipleSelect');
 const fftSizeSelect = document.getElementById('fftSizeSelect');
 const maLenInput = document.getElementById('maLen');
 const warnThresholdInput = document.getElementById('warnThreshold');
 const badThresholdInput = document.getElementById('badThreshold');
+const rpmTrendSens = document.getElementById('rpmTrendSens');
 const toggleLogBtn = document.getElementById('toggleLogBtn');
 const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+const resetPrevBtn = document.getElementById('resetPrevBtn');
 const alarmMode = document.getElementById('alarmMode');
 
 const timeCounter = document.getElementById('timeCounter');
@@ -192,6 +284,7 @@ const crestVal = document.getElementById('crestVal');
 const freqResult = document.getElementById('freqResult');
 const harmonicsTableBody = document.querySelector('#harmonicsTable tbody');
 const aiState = document.getElementById('aiState');
+const aiNote = document.getElementById('aiNote');
 const srText = document.getElementById('sr');
 const fftInfo = document.getElementById('fftInfo');
 const freqPerBinText = document.getElementById('freqPerBin');
@@ -200,7 +293,7 @@ const canvas = document.getElementById('spectrumCanvas');
 const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
 
-let alarmOsc=null; // oscillator for beep
+let alarmOsc = null;
 
 /* ---------------- 유틸 함수 ---------------- */
 function ampToDb(amp){
@@ -213,19 +306,14 @@ function toNormalizedTimeArray(u8){
   for(let i=0;i<u8.length;i++) out[i] = (u8[i] - 128) / 128;
   return out;
 }
-function calcRMS(arr){
-  let s=0; for(let i=0;i<arr.length;i++) s+=arr[i]*arr[i]; return Math.sqrt(s/arr.length);
-}
+function calcRMS(arr){ let s=0; for(let i=0;i<arr.length;i++) s+=arr[i]*arr[i]; return Math.sqrt(s/arr.length); }
 function calcKurtosisFromFloat(arr){
   const n=arr.length; if(n===0) return 0;
   let mean=0; for(let i=0;i<n;i++) mean+=arr[i]; mean/=n;
-  let m2=0,m4=0; for(let i=0;i<n;i++){ const d = arr[i]-mean; m2+=d*d; m4+=d*d*d*d; }
+  let m2=0,m4=0; for(let i=0;i<n;i++){ const d=arr[i]-mean; m2+=d*d; m4+=d*d*d*d; }
   m2/=n; m4/=n; if(m2===0) return 0; return m4/(m2*m2);
 }
-function calcCrest(arr){
-  let peak=0; for(let i=0;i<arr.length;i++) peak = Math.max(peak, Math.abs(arr[i]));
-  const rms = calcRMS(arr); return rms===0?0:(peak/rms);
-}
+function calcCrest(arr){ let peak=0; for(let i=0;i<arr.length;i++) peak=Math.max(peak,Math.abs(arr[i])); const rms=calcRMS(arr); return rms===0?0:(peak/rms); }
 function nowISO(){ return (new Date()).toISOString(); }
 
 /* ---------------- 마이크 연결 ---------------- */
@@ -255,7 +343,7 @@ connectBtn.addEventListener('click', async () => {
   }
 });
 
-/* ---------------- 시작 / 중지 ---------------- */
+/* ---------------- 시작/중지 ---------------- */
 startBtn.addEventListener('click', () => {
   if(!analyser || !audioContext){ statusDiv.textContent='마이크가 연결되지 않았습니다.'; statusDiv.className='status error'; return; }
   const newFft = Number(fftSizeSelect.value) || 4096;
@@ -266,64 +354,53 @@ startBtn.addEventListener('click', () => {
     fftInfo.textContent = analyser.fftSize;
     freqPerBinText.textContent = (audioContext.sampleRate / analyser.fftSize).toFixed(3) + ' Hz';
   }
-  isAnalyzing=true; startBtn.disabled=true; stopBtn.disabled=false;
-  statusDiv.textContent='분석 중...'; statusDiv.className='status info';
-  startTime = performance.now(); dbHistory=[]; if(logging) logRecords = [];
+  isAnalyzing = true; startBtn.disabled = true; stopBtn.disabled = false;
+  statusDiv.textContent = '분석 중...'; statusDiv.className = 'status info';
+  startTime = performance.now(); dbHistory=[]; if(logging) logRecords=[];
   analyzeLoop();
 });
 
 stopBtn.addEventListener('click', () => {
-  isAnalyzing=false; startBtn.disabled=false; stopBtn.disabled=true;
-  statusDiv.textContent='중지됨'; statusDiv.className='status';
-  if(rafId) cancelAnimationFrame(rafId);
-  stopAlarm();
+  isAnalyzing = false; startBtn.disabled = false; stopBtn.disabled = true;
+  statusDiv.textContent = '중지됨'; statusDiv.className = 'status';
+  if(rafId) cancelAnimationFrame(rafId); stopAlarm();
 });
 
-/* --------------- 로그 수집 및 CSV --------------- */
+/* --------------- 로그 처리 ---------------- */
 toggleLogBtn.addEventListener('click', () => {
-  logging = !logging;
-  toggleLogBtn.textContent = logging ? '수집 중' : '수집 시작';
+  logging = !logging; toggleLogBtn.textContent = logging ? '수집 중' : '수집 시작';
   toggleLogBtn.style.background = logging ? '#c53030' : '#718096';
-  if(logging) { logRecords = []; }
+  if(logging) logRecords = [];
 });
 downloadCsvBtn.addEventListener('click', () => {
   if(logRecords.length === 0){ alert('저장할 로그가 없습니다.'); return; }
-  const header = ['timestamp_s','iso','baseFreq_Hz','defectFreq_Hz','baseAmp','baseDb','defectAmp','defectDb','diffDb','aiLabel','rmsDb','peakDb','kurtosis','crest'];
+  const header = ['timestamp_s','iso','rpm','baseFreq_Hz','defectFreq_Hz','baseAmp','baseDb','defectAmp','defectDb','diffDb','aiLabel','aiNote','rmsDb','peakDb','kurtosis','crest'];
   const rows = logRecords.map(r => header.map(h => r[h]));
   const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'sound_log_'+(new Date()).toISOString().replace(/[:.]/g, '-')+'.csv';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
+  const a = document.createElement('a'); a.href = url;
+  a.download = 'sound_log_'+(new Date()).toISOString().replace(/[:.]/g,'-')+'.csv';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 });
+resetPrevBtn.addEventListener('click', () => { prevDefectAmp = prevH14dB = prevRmsDb = prevRpm = null; aiNote.textContent = '이전값이 리셋되었습니다.'; });
 
-/* ---------------- 알람 (간단 비프) ---------------- */
+/* ---------------- 알람 ---------------- */
 function playAlarm(){
   if(alarmMode.value === 'off' || !audioContext) return;
-  if(alarmOsc) return; // 이미 울림
+  if(alarmOsc) return;
   alarmOsc = audioContext.createOscillator();
   const gain = audioContext.createGain();
-  gain.gain.value = 0.001; // 시작 작게
-  alarmOsc.type = 'sine';
-  alarmOsc.frequency.value = 880;
-  alarmOsc.connect(gain);
-  gain.connect(audioContext.destination);
+  gain.gain.value = 0.001;
+  alarmOsc.type = 'sine'; alarmOsc.frequency.value = 880;
+  alarmOsc.connect(gain); gain.connect(audioContext.destination);
   alarmOsc.start();
-  // ramp up & down
-  gain.gain.exponentialRampToValueAtTime(0.15, audioContext.currentTime + 0.02);
-  setTimeout(() => {
-    if(alarmOsc){
-      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.2);
-      setTimeout(()=>{ try{ alarmOsc.stop(); alarmOsc.disconnect(); }catch(e){} alarmOsc=null; }, 250);
-    }
-  }, 200);
+  gain.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.02);
+  setTimeout(()=>{ if(alarmOsc){ gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.15); setTimeout(()=>{ try{ alarmOsc.stop(); alarmOsc.disconnect(); }catch(e){} alarmOsc=null; }, 200); } }, 200);
 }
 function stopAlarm(){ if(alarmOsc){ try{ alarmOsc.stop(); alarmOsc.disconnect(); }catch(e){} alarmOsc=null; } }
 
-/* ---------------- 메인 분석 루프 ---------------- */
+/* ---------------- 메인 분석 루프 (판정 로직 포함) ---------------- */
 function analyzeLoop(){
   if(!isAnalyzing) return;
   analyser.getByteFrequencyData(freqData);
@@ -335,8 +412,8 @@ function analyzeLoop(){
 
   const rpm = Number(rpmInput.value) || 0;
   const blade = Number(bladeInput.value) || 1;
+  const maxMultiple = Number(multipleSelect.value) || 7;
 
-  // 기본/결함(7×)
   const baseFreq = (rpm / 60) * blade;
   const defectFreq = baseFreq * 7;
 
@@ -357,30 +434,87 @@ function analyzeLoop(){
 
   // 시간영역 통계
   const tFloat = toNormalizedTimeArray(timeData);
-  const rms = calcRMS(tFloat); const peak = Math.max(...tFloat.map(v => Math.abs(v)));
+  const rms = calcRMS(tFloat);
+  const peak = Math.max(...tFloat.map(v => Math.abs(v)));
   const rmsDb = 20 * Math.log10(rms || 0.000001);
   const peakDb = 20 * Math.log10(peak || 0.000001);
   const kurt = calcKurtosisFromFloat(tFloat);
   const crest = calcCrest(tFloat);
 
-  // 고조파 1..7 (기본주파수의 배수)
+  // 고조파 up to maxMultiple
   const harmonics = [];
-  for(let k=1;k<=7;k++){
+  for(let k=1;k<=maxMultiple;k++){
     const hkFreq = baseFreq * k;
     const hkIdx = Math.round(hkFreq / freqPerBin);
     const amp = freqData[safeIdx(hkIdx)] || 0;
     harmonics.push({k,freq:hkFreq,amp,db:ampToDb(amp)});
   }
 
-  // AI 판정 (사용자 임계값)
+  // 14배 관련 값 (if available)
+  const h14 = harmonics.find(h=>h.k===14) || null;
+  const h14db = h14 ? h14.db : null;
+
+  // 판정: 사용자 임계값
   const warnTh = Number(warnThresholdInput.value) || 3;
   const badTh = Number(badThresholdInput.value) || 8;
-  let aiLabel='정상', aiClass='ok';
-  if(diffDb > badTh){ aiLabel='결함 의심'; aiClass='bad'; }
-  else if(diffDb > warnTh){ aiLabel='주의'; aiClass='warn'; }
 
-  // 경보
-  if(aiLabel === '결함 의심' && alarmMode.value !== 'off') playAlarm();
+  // RPM 트렌드 감지
+  let rpmNote = '';
+  if(prevRpm !== null){
+    const sens = Number(rpmTrendSens.value) || 0.03;
+    const rpmChange = (rpm - prevRpm) / (prevRpm || 1);
+    if(Math.abs(rpmChange) > sens){
+      // rpm increased or decreased significantly
+      if(rpmChange > 0){
+        // rpm 증가
+        if(rmsDbIncreased(rmsDb, prevRmsDb)) rpmNote = 'RPM 증가 → RMS 증가 (예상되는 동작)';
+        else rpmNote = 'RPM 증가하지만 RMS 감소 (비정상 반응 — 점검 권고)';
+      } else {
+        // rpm 감소
+        if(rmsDbIncreased(prevRmsDb, rmsDb)) rpmNote = 'RPM 감소 → RMS 감소 (예상되는 동작)';
+        else rpmNote = 'RPM 감소하지만 RMS 증가 (비정상 반응 — 점검 권고)';
+      }
+    }
+  }
+
+  // 14배 자동 판정 규칙
+  let aiLabel = '정상', aiClass = 'ok', aiNoteText = '';
+  // 기본 diff 기반
+  if(diffDb > badTh){ aiLabel='결함 의심'; aiClass='bad'; aiNoteText = `dB 차이(${diffDb.toFixed(2)}) > ${badTh}`; }
+  else if(diffDb > warnTh){ aiLabel='주의'; aiClass='warn'; aiNoteText = `dB 차이(${diffDb.toFixed(2)}) > ${warnTh}`; }
+
+  // 14배 특이 검사 (선택 범위가 14 이상일 때만)
+  if(maxMultiple >= 14 && h14){
+    const ratio14_7 = defectAmp > 0 ? (h14.amp / (defectAmp || 0.0001)) : 0;
+    // 조건 A: defect(7x)가 이전보다 유의하게 감소했고 ratio < 2 → 압력감소 패턴 (정상)
+    if(prevDefectAmp !== null && defectAmp < prevDefectAmp - 4 && ratio14_7 < 2.0){
+      aiLabel = '정상 (압력감소 패턴)';
+      aiClass = 'ok';
+      aiNoteText = '7× 감소 & 14/7 비율 낮음 → 압력/조건 변화로 인한 정상 패턴';
+    }
+    // 조건 B: 14× 절대적 급증 (dB)
+    if(prevH14dB !== null && (h14.db - prevH14dB) > 6){
+      aiLabel = '결함 의심 (14× 급증)';
+      aiClass = 'bad';
+      aiNoteText = `14× dB 증가: ${ (h14.db - prevH14dB).toFixed(2) } dB`;
+    }
+    // 조건 C: ratio(14/7) 매우 큼 -> 비정상
+    if(ratio14_7 > 3.0){
+      aiLabel = '비정상 (14× 과다)';
+      aiClass = 'bad';
+      aiNoteText = `14/7 비율: ${ratio14_7.toFixed(2)}`;
+    }
+  }
+
+  // RPM 트렌드 관련 비정상 반응 우선 표기
+  if(rpmNote && rpmNote.includes('비정상')){
+    aiLabel = '점검 권고 (RPM-진폭 불일치)';
+    aiClass = 'warn';
+    aiNoteText = rpmNote;
+  }
+
+  // 알람
+  if(aiLabel.includes('결함') && alarmMode.value !== 'off') playAlarm();
 
   // UI 업데이트
   const elapsed = Math.floor((performance.now() - (startTime||performance.now()))/1000);
@@ -393,25 +527,31 @@ function analyzeLoop(){
 
   // 고조파 표
   harmonicsTableBody.innerHTML = '';
-  harmonics.forEach(h=>{
+  harmonics.forEach(h => {
     const tr = document.createElement('tr');
-    const isBad = Math.abs(h.db - baseDb) > badTh; // 단순 비교: 해당 고조파의 dB와 base dB 차이로 하드 마킹
     tr.innerHTML = `<td>${h.k}×</td><td>${Math.round(h.freq)} Hz</td><td>${h.amp}</td><td>${h.db.toFixed(2)} dB</td>`;
-    if(isBad) tr.style.background = 'rgba(245, 101, 101, 0.08)';
     harmonicsTableBody.appendChild(tr);
   });
 
+  // AI 상태 표시
   aiState.innerHTML = `<span class="badge ${aiClass}">${aiLabel}</span>`;
-  rmsVal.textContent = `${rmsDb.toFixed(2)} dB`; peakVal.textContent = `${peakDb.toFixed(2)} dB`;
-  kurtVal.textContent = kurt.toFixed(2); crestVal.textContent = crest.toFixed(2);
-  srText.textContent = sr.toFixed(0) + ' Hz'; fftInfo.textContent = fftN;
+  aiNote.textContent = aiNoteText || '—';
+
+  // 통계 UI
+  rmsVal.textContent = `${rmsDb.toFixed(2)} dB`;
+  peakVal.textContent = `${peakDb.toFixed(2)} dB`;
+  kurtVal.textContent = kurt.toFixed(2);
+  crestVal.textContent = crest.toFixed(2);
+  srText.textContent = sr.toFixed(0) + ' Hz';
+  fftInfo.textContent = fftN;
   freqPerBinText.textContent = freqPerBin.toFixed(3) + ' Hz';
 
-  // 로그 레코드 추가
+  // 로그 추가
   if(logging){
     logRecords.push({
       timestamp_s: elapsed,
       iso: nowISO(),
+      rpm: rpm,
       baseFreq_Hz: Math.round(baseFreq),
       defectFreq_Hz: Math.round(defectFreq),
       baseAmp: baseAmp,
@@ -420,6 +560,7 @@ function analyzeLoop(){
       defectDb: defectDb.toFixed(3),
       diffDb: diffDb.toFixed(3),
       aiLabel: aiLabel,
+      aiNote: aiNoteText,
       rmsDb: rmsDb.toFixed(3),
       peakDb: peakDb.toFixed(3),
       kurtosis: kurt.toFixed(3),
@@ -428,23 +569,31 @@ function analyzeLoop(){
   }
 
   // 스펙트럼 그리기
-  drawSpectrum(freqData, baseFreq, defectFreq);
+  drawSpectrum(freqData, baseFreq, defectFreq, harmonics);
+
+  // prev 업데이트
+  prevDefectAmp = defectAmp;
+  prevH14dB = h14db;
+  prevRmsDb = rmsDb;
+  prevRpm = rpm;
 
   rafId = requestAnimationFrame(analyzeLoop);
 }
 
-/* ---------------- 스펙트럼 그리기 및 마우스 오버 ---------------- */
-function drawSpectrum(freqArray, baseFreq, defectFreq){
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.width;
-  const h = canvas.height;
+/* helper: rmsDb 증가 비교 (허용 소수점) */
+function rmsDbIncreased(a,b){
+  if(a === undefined || b === undefined || a === null || b === null) return null;
+  return (a - b) > 0.5; // 0.5 dB 변화면 유의미
+}
+
+/* ---------------- 스펙트럼 & 마우스오버 ---------------- */
+function drawSpectrum(freqArray, baseFreq, defectFreq, harmonics){
+  const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h);
-  // 배경
   const grad = ctx.createLinearGradient(0,0,0,h);
   grad.addColorStop(0,'#041023'); grad.addColorStop(1,'#00111a');
   ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
 
-  // 선 그리기
   ctx.beginPath();
   const len = freqArray.length;
   for(let i=0;i<len;i++){
@@ -453,9 +602,9 @@ function drawSpectrum(freqArray, baseFreq, defectFreq){
     const y = h - v * h;
     if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
   }
-  ctx.lineWidth = 1.3; ctx.strokeStyle = '#00e0ff'; ctx.stroke();
+  ctx.lineWidth = 1.2; ctx.strokeStyle = '#00e0ff'; ctx.stroke();
 
-  // 기본/결함 라인
+  // base/defect vertical lines
   const sr = audioContext.sampleRate;
   const freqPerBin = sr / analyser.fftSize;
   const baseIdx = Math.round(baseFreq / freqPerBin);
@@ -463,28 +612,25 @@ function drawSpectrum(freqArray, baseFreq, defectFreq){
   const bx = Math.min(w-1, Math.max(0, (baseIdx / len) * w));
   const dx = Math.min(w-1, Math.max(0, (defectIdx / len) * w));
 
-  ctx.strokeStyle = 'rgba(255,180,40,0.95)';
-  ctx.beginPath(); ctx.moveTo(bx,0); ctx.lineTo(bx,h); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,80,80,0.95)';
-  ctx.beginPath(); ctx.moveTo(dx,0); ctx.lineTo(dx,h); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,180,40,0.95)'; ctx.beginPath(); ctx.moveTo(bx,0); ctx.lineTo(bx,h); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,80,80,0.95)'; ctx.beginPath(); ctx.moveTo(dx,0); ctx.lineTo(dx,h); ctx.stroke();
 
-  // 고조파 포인트(작은 원)
+  // harmonics markers
   ctx.fillStyle = '#ffd27f';
-  for(let k=1;k<=7;k++){
-    const idx = Math.round((baseFreq*k) / freqPerBin);
+  for(let hItem of harmonics){
+    const idx = Math.round(hItem.freq / freqPerBin);
     const x = Math.min(w-1, Math.max(0, (idx / len) * w));
-    const amp = freqArray[Math.max(0, Math.min(len-1, idx))] / 255;
-    const y = h - amp * h;
+    const ampRatio = (freqArray[Math.max(0, Math.min(len-1, idx))] || 0) / 255;
+    const y = h - ampRatio * h;
     ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
   }
 }
 
-/* 마우스 오버 -> tooltip */
+/* tooltip */
 canvas.addEventListener('mousemove', (ev) => {
   if(!analyser || !audioContext) return;
   const rect = canvas.getBoundingClientRect();
   const x = ev.clientX - rect.left;
-  const y = ev.clientY - rect.top;
   const len = freqData.length;
   const idx = Math.floor((x / rect.width) * len);
   const sr = audioContext.sampleRate;
@@ -497,13 +643,11 @@ canvas.addEventListener('mousemove', (ev) => {
   tooltip.innerHTML = `${Math.round(freq)} Hz — Amp: ${amp} (${ampToDb(amp).toFixed(2)} dB)`;
   tooltip.style.display = 'block';
 });
-canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+canvas.addEventListener('mouseleave', ()=>{ tooltip.style.display = 'none'; });
 
-/* ---------------- 기타 UI 이벤트 ---------------- */
+/* ---------------- UI 이벤트 ---------------- */
 fftSizeSelect.addEventListener('change', () => {
-  if(analyser){ analyser.fftSize = Number(fftSizeSelect.value); freqData = new Uint8Array(analyser.frequencyBinCount); timeData = new Uint8Array(analyser.fftSize);
-    fftInfo.textContent = analyser.fftSize; freqPerBinText.textContent = (audioContext.sampleRate / analyser.fftSize).toFixed(3) + ' Hz';
-  }
+  if(analyser){ analyser.fftSize = Number(fftSizeSelect.value); freqData = new Uint8Array(analyser.frequencyBinCount); timeData = new Uint8Array(analyser.fftSize); fftInfo.textContent = analyser.fftSize; freqPerBinText.textContent = (audioContext.sampleRate / analyser.fftSize).toFixed(3) + ' Hz'; }
 });
 window.addEventListener('beforeunload', ()=>{ if(audioContext && audioContext.state !== 'closed') audioContext.close(); });
 
