@@ -18,12 +18,18 @@
   }
   h1{text-align:center;font-size:1.3rem;margin-bottom:14px;color:#fff}
 
-  /* PC = 2열 / 모바일 = 1열 */
+  /* PC = 2열 / 모바일 = 1열 (화면 떨림 방지를 위해 PC에서 왼쪽 패널 너비 고정) */
   .grid{
-    display:grid;grid-template-columns:1fr 1fr;gap:14px;
+    display:grid;
+    /* 850px 미만 (모바일): 1열 */
+    grid-template-columns: 1fr; 
+    gap:14px;
   }
-  @media(max-width:850px){
-    .grid{grid-template-columns:1fr;}
+  @media(min-width:850px){ /* 850px 이상 (PC 환경)에서 적용 */
+    .grid{
+      /* 수정: 왼쪽 패널을 350px로 고정, 오른쪽 패널이 나머지 공간(1fr)을 차지 */
+      grid-template-columns: 350px 1fr; 
+    }
   }
 
   .panel{background:#1e2030;padding:14px;border-radius:10px}
@@ -220,7 +226,7 @@ let isRun=false;
 let raf;
 
 // 펠릿타이저 전용 상태 저장 변수
-let prevWearDb = null; // 이전 7x(N×) dB 값
+let prevWearDb = null; // 이전 N× dB 값
 let prevBaseDb = null; // 이전 1x dB 값
 let prevWearMultipleAmp = null; // 이전 N× 진폭
 let prevDoubleWearMultipleAmp = null; // 이전 2N× 진폭
@@ -255,7 +261,7 @@ const timeBox = _id('timeCounter');
 const rmsBox = _id('rmsVal');
 const kurtBox = _id('kurtVal');
 const crestBox = _id('crestVal'); 
-const wearIndexBox = _id('wearIndex'); // 7x 하모닉 지수 표시
+const wearIndexBox = _id('wearIndex'); // N× 하모닉 지수 표시
 
 const freqRes = _id('freqResult');
 const harmTable = _id('harmonicsTable');
@@ -276,6 +282,7 @@ function _id(x){return document.getElementById(x);}
 
 /* 캔버스 크기 설정 */
 function setCanvasSize() {
+  // 고정된 왼쪽 패널 덕분에 오른쪽 캔버스 너비는 안정적입니다.
   const containerWidth = canvas.parentNode.clientWidth;
   
   canvas.width = containerWidth;
@@ -297,11 +304,11 @@ btnMic.onclick = async ()=>{
     freqData = new Uint8Array(analyser.frequencyBinCount);
     timeData = new Uint8Array(analyser.fftSize);
     
-    // 줌 범위 초기화 (3kHz ~ 6kHz에 맞춘 초기 줌을 위해 Nyquist 주파수(SR/2)를 기반으로 계산)
+    // 줌 범위 초기화 (3kHz ~ 6kHz 포함, 최대 8kHz까지)
     const sr = audioContext.sampleRate;
     const bin = sr / analyser.fftSize;
-    const startHz = 0; // 초기값은 0으로 설정
-    const endHz = 8000; // 3kHz~6kHz 포함, 최대 8kHz까지 보장
+    const startHz = 0;
+    const endHz = 8000;
     
     viewStartIndex = Math.round(startHz / bin);
     viewEndIndex = Math.min(analyser.frequencyBinCount, Math.round(endHz / bin));
@@ -425,7 +432,7 @@ function loop(){
   let wearDb  = ampToDb(wearAmp);
   let doubleWearDb  = ampToDb(doubleWearAmp);
 
-  let wearDiffDb = wearDb - baseDb; // 🔥 핵심 마모 지수: N×(7×) dB - 1× dB
+  let wearDiffDb = wearDb - baseDb; // 🔥 핵심 마모 지수: N× dB - 1× dB
 
   /* RMS, Kurtosis, Crest */
   let tArr = floatNorm(timeData);
@@ -449,8 +456,8 @@ function loop(){
   /* 🔥 AI 판정 로직: 펠릿타이저 전문 판정 */
   let aiL="정상", aiC="ok", msg="";
 
-  let warnT=Number(warnIn.value); // 예: 3 dB
-  let badT=Number(badIn.value);  // 예: 8 dB
+  let warnT=Number(warnIn.value);
+  let badT=Number(badIn.value);
 
   // 1. 과도한 마모/과압력 판정
   if(wearDiffDb > badT){ 
@@ -463,7 +470,7 @@ function loop(){
       msg=`N× 지수 ${wearDiffDb.toFixed(2)} dB, 안정 범위`;
   }
 
-  // 2. 압력 감소 패턴 판정 (미는 압력 감소 시 7x가 먼저 낮아지는 현상)
+  // 2. 압력 감소 패턴 판정
   if(prevWearDb !== null && prevBaseDb !== null){
       const wearDrop = prevWearDb - wearDb;
       const baseDrop = prevBaseDb - baseDb;
@@ -471,10 +478,10 @@ function loop(){
       // N× (7x) dB가 3dB 이상 하락했고, 1x 하락보다 N× 하락이 더 큰 경우 (압력 감소 시그널)
       if(wearDrop > 3 && wearDrop > baseDrop){
         
-        // 14x(2N×)가 7x(N×) 대비 상대적으로 커 보이는지 확인 (진폭 비율 사용)
+        // 2N×(14x)가 N×(7x) 대비 상대적으로 커 보이는지 확인 (진폭 비율 사용)
         const wearAmpToDoubleRatio = wearAmp > 0 ? doubleWearAmp / wearAmp : 0;
         
-        if (wearAmpToDoubleRatio > 2) { // 2배 이상이면 상대적으로 크다고 간주
+        if (wearAmpToDoubleRatio > 2) { 
              aiL="정상 (압력 감소 패턴)"; 
              aiC="ok"; 
              msg=`N× 하락 확인 (${wearDrop.toFixed(1)}dB↓). 2N×/N× 비율 ${wearAmpToDoubleRatio.toFixed(1)}로 정상 패턴.`;
@@ -491,7 +498,7 @@ function loop(){
   timeBox.innerText = Math.floor((performance.now()-t0)/1000)+"s";
   rmsBox.innerText = rmsDb.toFixed(2)+" dB";
   kurtBox.innerText = kurt.toFixed(2);
-  crestBox.innerText = crest.toFixed(2);
+  crestBox.innerText = crestCalc.toFixed(2);
   wearIndexBox.innerText = wearDiffDb.toFixed(2)+" dB"; // 🔥 핵심 지수
 
   freqRes.innerHTML =
@@ -507,7 +514,7 @@ function loop(){
     // N× 및 2N×는 특별히 강조
     let style = "";
     if (h.k === wearM) style = 'style="background:#8b4513; color:#fff;"';
-    if (h.k === wearM * 2) style = 'style="background:#5e326b; color:#fff;"'; // 14x는 보라색
+    if (h.k === wearM * 2) style = 'style="background:#5e326b; color:#fff;"'; // 2N×는 보라색
 
     harmTable.innerHTML+=`<tr ${style}><td>${h.k}×</td><td>${Math.round(h.f)}</td><td>${h.a}</td><td>${h.db.toFixed(2)}</td><td>${h.ratioToWear.toFixed(2)}</td></tr>`;
   });
@@ -605,7 +612,7 @@ function drawFFT(arr){
   ctx.clearRect(0,0,w,h);
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
 
-  const wearM = Number(wearMultIn.value); // N (주요 마모 배수)
+  const wearM = Number(wearMultIn.value);
   
   const startIdx = viewStartIndex;
   const endIdx = viewEndIndex;
@@ -647,7 +654,7 @@ function drawFFT(arr){
     let blade = Number(bladeIn.value);
     let base = (rpm/60)*blade;
 
-    // 1x, N×(7×), 2N×(14×)만 표시
+    // 1x, N×, 2N×만 표시
     const keyMultiples = [1, wearM, wearM * 2]; 
 
     for(let k of keyMultiples){
@@ -677,7 +684,7 @@ function drawFFT(arr){
   }
 }
 
-/* ---------- 줌/팬 이벤트 핸들러 (변화 없음) ---------- */
+/* ---------- 줌/팬 이벤트 핸들러 ---------- */
 canvas.addEventListener('mousedown', (e) => {
     isPanning = true;
     lastPanX = e.clientX;
@@ -765,7 +772,7 @@ canvas.addEventListener('wheel', (e) => {
     }
 }, {passive: false});
 
-/* ---------- 유틸 (변화 없음) ---------- */
+/* ---------- 유틸 ---------- */
 canvas.addEventListener('mousemove',e=>{
   if(!analyser || !freqData) return;
   let r=canvas.getBoundingClientRect();
