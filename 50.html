@@ -3,67 +3,127 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>소리 분석기 — 7×/14× 자동판정 포함</title>
+<title>소리 분석기 — 7×/14× AI 판정 고정 버전</title>
+
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:linear-gradient(135deg,#2b6cb0,#805ad5);color:#222;min-height:100vh;padding:18px}
-  .container{max-width:1100px;margin:0 auto;background:#fff;border-radius:12px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,0.18)}
-  h1{font-size:1.2rem;text-align:center;margin-bottom:12px}
-  .grid{display:grid;grid-template-columns:1fr 440px;gap:14px;align-items:start}
+  body{
+    font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+    background:linear-gradient(135deg,#2b6cb0,#805ad5);
+    color:#222;
+    min-height:100vh;
+    padding:18px;
+  }
+  .container{
+    max-width:1100px;
+    margin:0 auto;
+    background:#fff;
+    border-radius:12px;
+    padding:18px;
+    box-shadow:0 12px 40px rgba(0,0,0,0.18)
+  }
+  h1{font-size:1.3rem;text-align:center;margin-bottom:12px}
+
+  .grid{display:grid;grid-template-columns:1fr 420px;gap:14px;align-items:start}
   .panel{background:#fbfbff;padding:12px;border-radius:10px}
+
   label{display:block;margin-top:8px;font-weight:600;margin-bottom:6px}
-  input[type=number], select, input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef;font-size:0.95rem}
+
+  input[type=number], input[type=text], select{
+    width:100%;
+    padding:8px;
+    border-radius:8px;
+    border:1px solid #e6e9ef;
+    font-size:0.95rem
+  }
+
   .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-  button{padding:9px 12px;border-radius:8px;border:none;font-weight:700;color:#fff;cursor:pointer}
-  #connectBtn{background:#38a169} #startButton{background:#3182ce} #stopButton{background:#e53e3e}
+  button{
+    padding:9px 12px;
+    border-radius:8px;
+    border:none;
+    font-weight:700;
+    color:#fff;
+    cursor:pointer
+  }
+  #connectBtn{background:#38a169}
+  #startButton{background:#3182ce}
+  #stopButton{background:#e53e3e}
+  button:disabled{background:#9aa3b2;cursor:not-allowed}
+
   .status{margin-top:10px;padding:10px;border-radius:8px;font-size:0.9rem}
   .status.success{background:#e6fffa;color:#22543d}
   .status.error{background:#fff5f5;color:#822727}
   .status.info{background:#fffff0;color:#735c0f}
+
   .kpi{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .kpi-item{background:#fff;padding:8px;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,0.06);min-width:120px}
+  .kpi-item{
+    background:#fff;padding:8px;border-radius:8px;
+    box-shadow:0 4px 8px rgba(0,0,0,0.06);min-width:120px
+  }
   .small{font-size:0.85rem;color:#444}
-  canvas{width:100%;height:240px;background:#041023;border-radius:6px;display:block}
-  table{width:100%;border-collapse:collapse;margin-top:8px}
-  th,td{padding:6px;border-bottom:1px solid #eee;text-align:left;font-size:0.9rem}
-  .badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700;color:#fff;font-size:0.85rem}
-  .ok{background:#38a169} .warn{background:#dd6b20} .bad{background:#e53e3e}
-  .tooltip{position:absolute;padding:6px 8px;background:rgba(0,0,0,0.85);color:#fff;border-radius:6px;font-size:0.85rem;pointer-events:none;transform:translate(-50%,-120%);white-space:nowrap;z-index:10}
-  .muted{color:#666;font-size:0.9rem}
-  @media(max-width:1000px){.grid{grid-template-columns:1fr;}.panel{margin-bottom:12px}}
 
-/* --- AI 판정 결과 흔들림 방지용 고정 레이아웃 --- */
-#aiState {
-    min-height: 34px;      /* 상태 배지 높이 고정 */
-    display: flex;
-    align-items: center;   /* 내용 중앙 정렬 */
-}
+  canvas{
+    width:100%;height:200px;background:#041023;
+    border-radius:6px;display:block
+  }
 
-#aiNote {
-    min-height: 40px;      /* 상세 메시지 영역 고정 */
-    display: flex;
-    align-items: center;
-}
+  table{
+    width:100%;border-collapse:collapse;margin-top:8px
+  }
+  th,td{
+    padding:6px;border-bottom:1px solid #eee;text-align:left;font-size:0.9rem
+  }
 
+  .badge{
+    display:inline-block;
+    padding:4px 8px;border-radius:999px;
+    font-weight:700;color:#fff;font-size:0.85rem
+  }
+  .ok{background:#38a169}
+  .warn{background:#dd6b20}
+  .bad{background:#e53e3e}
 
+  .tooltip{
+    position:absolute;padding:6px 8px;background:rgba(0,0,0,0.85);
+    color:#fff;border-radius:6px;font-size:0.85rem;
+    pointer-events:none;transform:translate(-50%,-120%);
+    white-space:nowrap;z-index:10
+  }
 
-
-
-
-
-
-
-
-
-
-
-
+  /* ============================================
+     🔥 화면 흔들림 0%를 위한 완전 고정 AI 박스
+     ============================================ */
+  #aiBox {
+    height: 120px;       /* 전체 AI 영역 자체 고정 */
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  #aiState {
+    height: 34px;        /* 상태 라벨 고정 */
+    display:flex;
+    align-items:center;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+  }
+  #aiNote {
+    height: 70px;        /* 상세 메시지 고정 */
+    display:flex;
+    align-items:center;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    font-size:0.86rem;
+    color:#333;
+  }
 
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>🔊 소리 분석기 — 자동 14× 판정 포함</h1>
+  
+  <div class="container">
+  <h1>🔊 소리 분석기 — 7×/14× AI 판정 고정 버전</h1>
 
   <div class="grid">
     <!-- LEFT -->
@@ -115,7 +175,7 @@
             <input type="number" id="warnThreshold" value="3" min="0" step="0.1">
             <input type="number" id="badThreshold" value="8" min="0" step="0.1">
           </div>
-          <div class="small">diff(dB) &gt; 주의 &gt; 결함 (값 변경 가능)</div>
+          <div class="small" style="margin-top:6px">diff(dB) &gt; 주의 &gt; 결함 (값 변경 가능)</div>
         </div>
         <div style="width:160px">
           <label>RPM 트렌드 감지 (민감도)</label>
@@ -155,10 +215,9 @@
         <div class="small" style="margin-top:10px">고조파 (선택한 배수 범위)</div>
         <table id="harmonicsTable"><thead><tr><th>배수</th><th>주파수(Hz)</th><th>진폭</th><th>dB</th></tr></thead><tbody></tbody></table>
 
-        <div style="margin-top:8px">
-          <div class="small">AI 상태판정</div>
-          <div id="aiState" style="margin-top:6px"><span class="badge ok">-</span></div>
-          <div id="aiNote" style="margin-top:6px;color:#444"></div>
+        <div id="aiBox">
+          <div id="aiState"><span class="badge ok">-</span></div>
+          <div id="aiNote">AI 상세 메시지가 이곳에 표시됩니다.</div>
         </div>
 
       </div>
@@ -182,7 +241,7 @@
         <div class="kpi-item"><div class="small">빈당 주파수</div><div id="freqPerBin" style="font-weight:700">-</div></div>
       </div>
 
-      <div class="small muted" style="margin-top:10px">팁: 브라우저가 마이크 권한을 요구하면 '허용'하세요. 로컬에서 실행 시 `http://localhost:8000/20.html`로 열면 안정적입니다.</div>
+      <div class="small muted" style="margin-top:10px">팁: 브라우저가 마이크 권한을 요구하면 '허용'하세요. 로컬에서 실행 시 <code>http://localhost:8000/20.html</code>로 열면 안정적입니다.</div>
     </div>
 
   </div>
@@ -271,13 +330,15 @@ connectBtn.addEventListener('click', async () => {
 
     connectBtn.disabled = true; connectBtn.style.background='#999'; connectBtn.textContent='🎤 연결됨';
     startBtn.disabled = false;
-    statusDiv.textContent = '마이크 연결 성공'; statusDiv.className='status success';
+    statusDiv.textContent = '마이크 연결 성공';
+    statusDiv.className = 'status success';
 
     srText.textContent = audioContext.sampleRate.toFixed(0) + ' Hz';
     fftInfo.textContent = analyser.fftSize;
     freqPerBinText.textContent = (audioContext.sampleRate / analyser.fftSize).toFixed(3) + ' Hz';
   }catch(err){
-    statusDiv.textContent = '마이크 연결 실패: ' + (err.message || err); statusDiv.className='status error';
+    statusDiv.textContent = '마이크 연결 실패: ' + (err.message || err);
+    statusDiv.className = 'status error';
   }
 });
 
@@ -293,14 +354,14 @@ startBtn.addEventListener('click', () => {
     freqPerBinText.textContent = (audioContext.sampleRate / analyser.fftSize).toFixed(3) + ' Hz';
   }
   isAnalyzing = true; startBtn.disabled = true; stopBtn.disabled = false;
-  statusDiv.textContent = '분석 중...'; statusDiv.className='status info';
+  statusDiv.textContent = '분석 중...'; statusDiv.className = 'status info';
   startTime = performance.now(); dbHistory=[]; if(logging) logRecords=[];
   analyzeLoop();
 });
 
 stopBtn.addEventListener('click', () => {
   isAnalyzing = false; startBtn.disabled = false; stopBtn.disabled = true;
-  statusDiv.textContent = '중지됨'; statusDiv.className='status';
+  statusDiv.textContent = '중지됨'; statusDiv.className = 'status';
   if(rafId) cancelAnimationFrame(rafId); stopAlarm();
 });
 
@@ -473,7 +534,7 @@ function analyzeLoop(){
 
   // AI 상태 표시
   aiState.innerHTML = `<span class="badge ${aiClass}">${aiLabel}</span>`;
-  aiNote.textContent = aiNoteText;
+  aiNote.textContent = aiNoteText || '—';
 
   // 통계 UI
   rmsVal.textContent = `${rmsDb.toFixed(2)} dB`;
@@ -592,4 +653,5 @@ window.addEventListener('beforeunload', ()=>{ if(audioContext && audioContext.st
 </script>
 </body>
 </html>
+
 
