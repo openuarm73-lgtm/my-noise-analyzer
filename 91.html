@@ -175,7 +175,16 @@
 </div>
 
 <div class="panel">
-  <div style="font-size:0.9rem">실시간 FFT 스펙트럼 (13000Hz까지 확대)</div>
+  <label for="zoomSelect">캔버스 주파수 범위 (줌)</label>
+  <select id="zoomSelect" style="margin-bottom: 8px;">
+    <option value="5000">0 ~ 5000 Hz</option>
+    <option value="10000">0 ~ 10000 Hz</option>
+    <option value="13000" selected>0 ~ 13000 Hz (기본)</option>
+    <option value="20000">0 ~ 20000 Hz</option>
+    <option value="max">최대 (Nyquist)</option>
+  </select>
+  
+  <div style="font-size:0.9rem">실시간 FFT 스펙트럼</div>
   <div style="position:relative;margin-top:8px">
     <canvas id="spectrumCanvas"></canvas>
     <div id="tooltip"></div>
@@ -214,6 +223,8 @@ const rpmIn = _id('rpmInput');
 const bladeIn = _id('bladeCountInput');
 const multIn = _id('multipleSelect');
 const fftIn = _id('fftSizeSelect');
+// 🔥 줌 셀렉트 박스
+const zoomIn = _id('zoomSelect'); 
 
 const btnMic = _id('connectBtn');
 const btnStart = _id('startButton');
@@ -234,7 +245,6 @@ const avgBox = _id('movingAvg');
 const rmsBox = _id('rmsVal');
 const peakBox = _id('peakVal');
 const kurtBox = _id('kurtVal');
-// 🔥 ID 참조 오류 수정: 'crestBox' -> 'crestVal'
 const crestBox = _id('crestVal'); 
 
 const freqRes = _id('freqResult');
@@ -311,6 +321,7 @@ btnMic.onclick = async ()=>{
     let stream = await navigator.mediaDevices.getUserMedia({audio:true});
     audioContext = new (window.AudioContext||window.webkitAudioContext)();
     analyser = audioContext.createAnalyser();
+    // FFT Size는 마이크 연결 시점에 설정해야 함
     analyser.fftSize = Number(fftIn.value);
     freqData = new Uint8Array(analyser.frequencyBinCount);
     timeData = new Uint8Array(analyser.fftSize);
@@ -539,7 +550,7 @@ function loop(){
   raf=requestAnimationFrame(loop);
 }
 
-/* ---------- 🔥 FFT 그리기 (13000Hz 확대 및 주파수 선, 피크 포함) ---------- */
+/* ---------- 🔥 FFT 그리기 (줌, 주파수 선, 피크 포함) ---------- */
 function draw(arr){
   setCanvasSize(); 
   
@@ -552,27 +563,30 @@ function draw(arr){
   let sr = audioContext.sampleRate;
   let bin = sr / analyser.fftSize;
   
-  // 13000Hz에 해당하는 인덱스 계산 (FFT 배열의 길이를 초과하지 않도록 제한)
-  const MAX_FREQ = 13000;
-  const maxIdx13k = Math.min(arr.length, Math.round(MAX_FREQ / bin));
+  // 🔥 줌 설정 가져오기
+  const zoomValue = zoomIn.value;
+  const MAX_FREQ = zoomValue === 'max' ? sr / 2 : Number(zoomValue);
+  
+  // MAX_FREQ에 해당하는 인덱스 계산 (FFT 배열의 길이를 초과하지 않도록 제한)
+  const maxIdxZoom = Math.min(arr.length, Math.round(MAX_FREQ / bin));
   
   // 1. FFT 스펙트럼 선 그리기
   ctx.beginPath();
   
-  // 피크 찾기 변수 초기화 (13000Hz 범위 내에서)
+  // 피크 찾기 변수 초기화 (줌 범위 내에서)
   let maxAmp = 0;
   let maxIdx = 0;
 
-  // 루프 범위를 maxIdx13k까지로 제한
-  for(let i=0;i < maxIdx13k;i++){
+  // 루프 범위를 maxIdxZoom까지로 제한
+  for(let i=0;i < maxIdxZoom;i++){
     // 최대 진폭 찾기 (범위 내에서)
     if (arr[i] > maxAmp) {
       maxAmp = arr[i];
       maxIdx = i;
     }
       
-    // x 좌표 계산 시, maxIdx13k를 기준으로 너비를 계산 (확대 효과)
-    let x=(i/maxIdx13k)*w; 
+    // x 좌표 계산 시, maxIdxZoom을 기준으로 너비를 계산 (확대/축소 효과)
+    let x=(i/maxIdxZoom)*w; 
     let y=h - (arr[i]/255)*h;
     if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
   }
@@ -590,11 +604,11 @@ function draw(arr){
       let f = base * k;
       let idx = Math.round(f / bin); 
       
-      // idx가 13000Hz를 초과하는 maxIdx13k보다 크면 그리지 않음
-      if (idx > maxIdx13k) continue;
+      // idx가 줌 범위를 초과하는 maxIdxZoom보다 크면 그리지 않음
+      if (idx > maxIdxZoom) continue;
 
-      // x 좌표 계산 시, maxIdx13k를 기준으로 너비를 계산 (확대 효과)
-      let x = (idx / maxIdx13k) * w; 
+      // x 좌표 계산 시, maxIdxZoom을 기준으로 너비를 계산 (확대/축소 효과)
+      let x = (idx / maxIdxZoom) * w; 
       
       if(x > 0 && x < w){
           // 1x, 7x, 14x는 더 진하게 표시
@@ -618,8 +632,8 @@ function draw(arr){
       let peakF = maxIdx * bin;
       let peakDb = ampToDb(maxAmp);
       
-      // 캔버스상의 피크 위치 (maxIdx13k 기준)
-      let peakX = (maxIdx / maxIdx13k) * w;
+      // 캔버스상의 피크 위치 (maxIdxZoom 기준)
+      let peakX = (maxIdx / maxIdxZoom) * w;
       let peakY = h - (maxAmp / 255) * h;
 
       // 텍스트 스타일 설정
@@ -641,7 +655,7 @@ function draw(arr){
   }
 }
 
-/* ---------- 🔥 Tooltip (13000Hz 확대 반영) ---------- */
+/* ---------- 🔥 Tooltip (줌 범위 반영) ---------- */
 canvas.addEventListener('mousemove',e=>{
   if(!audioContext || !analyser || !isRun) return; 
     
@@ -651,11 +665,14 @@ canvas.addEventListener('mousemove',e=>{
   
   let sr=audioContext.sampleRate;
   let bin=sr/analyser.fftSize;
-  const MAX_FREQ = 13000;
-  const maxIdx13k = Math.min(freqData.length, Math.round(MAX_FREQ / bin));
+
+  // 🔥 줌 설정 가져와서 최대 인덱스 계산
+  const zoomValue = zoomIn.value;
+  const MAX_FREQ = zoomValue === 'max' ? sr / 2 : Number(zoomValue);
+  const maxIdxZoom = Math.min(freqData.length, Math.round(MAX_FREQ / bin));
   
-  // x 좌표 비율을 maxIdx13k를 기준으로 인덱스 계산 (확대된 영역에 맞춰 계산)
-  let idx=Math.floor((x/w)*maxIdx13k); 
+  // x 좌표 비율을 maxIdxZoom을 기준으로 인덱스 계산 (확대된 영역에 맞춰 계산)
+  let idx=Math.floor((x/w)*maxIdxZoom); 
   
   if (idx >= freqData.length || idx < 0) {
       tooltip.style.display="none";
