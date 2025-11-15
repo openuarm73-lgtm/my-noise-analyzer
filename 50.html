@@ -130,7 +130,7 @@
         <div style="margin-top:8px">
           <div class="small">AI 상태판정</div>
           <div id="aiState" style="margin-top:6px"><span class="badge ok">-</span></div>
-          <div id="aiNote" style="margin-top:6px;color:#444"; min-height: 20px;></div>
+          <div id="aiNote" style="margin-top:6px;color:#444";></div>
         </div>
 
       </div>
@@ -445,7 +445,7 @@ function analyzeLoop(){
 
   // AI 상태 표시
   aiState.innerHTML = `<span class="badge ${aiClass}">${aiLabel}</span>`;
-  aiNote.textContent = aiNoteText;
+  aiNote.textContent = aiNoteText || '\u00a0';
 
   // 통계 UI
   rmsVal.textContent = `${rmsDb.toFixed(2)} dB`;
@@ -564,6 +564,7 @@ window.addEventListener('beforeunload', ()=>{ if(audioContext && audioContext.st
 </script>
 </body>
 </html>
+
 
 
 
