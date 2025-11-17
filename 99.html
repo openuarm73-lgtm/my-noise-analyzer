@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>모바일 소리 분석기 V14.3 (Infinity 오류 완전 해결)</title>
+<style>
+  /* 기존 스타일 그대로 유지 (생략) */
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:#0d0d1a;color:#e0e0ff;padding:12px;line-height:1.5;}
+  .container{max-width:800px;margin:0 auto;background:#16182e;border-radius:16px;padding:16px;box-shadow:0 8px 32px rgba(0,0,0,0.6);}
+  h1{text-align:center;font-size:1.4rem;margin-bottom:8px;color:#fff;font-weight:800;}
+  .sub-header{text-align:center;font-size:0.95rem;color:#a0a0ff;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:850px){.grid{grid-template-columns:1fr;}}
+  .panel{background:#1e2138;padding:16px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);}
+  label{display:block;margin:14px 0 6px;font-weight:600;font-size:0.95rem;color:#b0b0ff;}
+  input,select{width:100%;padding:11px;border-radius:10px;border:1px solid #444;background:#121426;color:#fff;font-size:1rem;}
+  button{width:100%;padding:13px;margin-top:12px;border:none;border-radius:10px;background:#5e6eff;color:#fff;font-size:1.05rem;font-weight:700;cursor:pointer;transition:0.2s;}
+  button:hover{background:#4a5ae6;} button:disabled{background:#3a3a50;opacity:0.6;}
+  .status{margin-top:12px;padding:10px;border-radius:8px;font-size:0.92rem;text-align:center;}
+  .info{background:#2d2d40;color:#bbd0ff;} .success{background:#1e402e;color:#a0ffb8;} .error{background:#402727;color:#ffa0a0;}
+  .kpi{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+  .kpi-item{flex:1;min-width:120px;background:#121426;padding:10px 8px;border-radius:10px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.4);}
+  .kpi-item div{font-size:0.85rem;color:#aaa;margin-bottom:4px;} .kpi-item b{font-size:1.35rem;color:#fff;}
+  .kpi-critical{background:#4a1a1a !important;} .kpi-danger{background:#5e1a00 !important;}
+  .canvas-box{margin-top:10px;border-radius:12px;background:#000;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5);}
+  canvas{width:100%;height:260px;touch-action:none;}
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:0.88rem;}
+  th,td{padding:8px 6px;border-bottom:1px solid #333;text-align:center;} th{background:#1e2138;}
+  .rank-1-row{background:#1e402e;color:#a0ffb8;font-weight:bold;} .rank-2-row{background:#403a1a;color:#ffe0a0;}
+  #rankBox{margin-top:16px;padding:16px;border-radius:12px;text-align:center;font-size:1.25rem;font-weight:800;}
+  .rank-1{background:#1e803e;color:#b0ffb8;} .rank-2{background:#b37400;color:#fff4c0;}
+  .rank-3{background:#b31a1a;color:#ffc0c0;} .rank-4{background:#404050;color:#ddd;}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>모바일 소리 분석기 V14.3</h1>
+  <div class="sub-header">BPF 고조파 SNR 순위 기반 펠릿타이저 부하 모니터링</div>
+
+  <div class="grid">
+    <div class="panel">
+      <b>설정 및 제어</b>
+      <label>RPM</label><input type="number" id="rpmInput" value="1500" min="1">
+      <label>블레이드 수 (BPF 기준)</label><input type="number" id="bladeCountInput" value="20" min="1">
+      <hr style="margin:20px 0;border-color:#333;">
+      <label>FFT 크기</label>
+      <select id="fftSizeSelect">
+        <option value="4096">4096</option>
+        <option value="8192" selected>8192</option>
+        <option value="16384">16384</option>
+      </select>
+      <label>최대 표시 주파수</label>
+      <select id="maxFreqSelect">
+        <option value="bpf14" selected>14×BPF ( 자동)</option>
+        <option value="5000">5000 Hz</option>
+        <option value="10000">10000 Hz</option>
+        <option value="15000">15000 Hz</option>
+      </select>
+      <label>RPM 헌팅 보상 (±%)</label>
+      <input type="number" step="0.01" id="bandPercentInput" value="0.05" min="0.01" max="0.5">
+
+      <button id="connectBtn">마이크 연결</button>
+      <button id="startButton" disabled>분석 시작</button>
+      <button id="stopButton" disabled>중지</button>
+      
+      <div id="status" class="status info">대기 중</div>
+      <div id="rankBox" class="rank-4">분석을 시작하세요</div>
+    </div>
+
+    <div class="panel">
+      <b>핵심 부하 지표</b>
+      <div class="kpi">
+        <div class="kpi-item kpi-critical"><div>7×BPF SNR</div><b id="bpf7SnrVal">-</b></div>
+        <div class="kpi-item kpi-critical"><div>7×BPF 순위</div><b id="bpf7RankVal">-</b></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-item kpi-danger"><div>14×BPF SNR</div><b id="bpf14SnrVal">-</b></div>
+        <div class="kpi-item kpi-danger"><div>14×BPF 순위</div><b id="bpf14RankVal">-</b></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-item"><div>최대 SNR</div><b id="maxSnrVal">-</b></div>
+        <div class="kpi-item"><div>최대 주파수</div><b id="maxSnrFreqVal">-</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="grid-column:1/3;">
+    <b>FFT 스펙트럼</b>
+    <div class="canvas-box"><canvas id="spectrumCanvas"></canvas></div>
+    <div style="margin-top:12px;font-weight:600;color:#b0b0ff;">주요 성분 SNR 순위 (Top 5)</div>
+    <table><thead><tr><th>순위</th><th>성분</th><th>Hz</th><th>SNR dB</th></tr></thead><tbody id="harmonicsTable"></tbody></table>
+  </div>
+</div>
+
+<script>
+let audioContext, analyser, source;
+let freqData;
+let isRun = false;
+let raf;
+let rank7Hist = [], rank14Hist = [];
+
+// 안전하게 숫자 가져오기 (NaN/0 방지)
+function getVal(id, def, min=1) {
+  const v = parseFloat(document.getElementById(id).value);
+  return (isNaN(v) || v < min) ? def : v;
+}
+
+const statusBox = document.getElementById('status');
+const rankBox = document.getElementById('rankBox');
+const maxSnrBox = document.getElementById('maxSnrVal');
+const maxSnrFreqBox = document.getElementById('maxSnrFreqVal');
+const bpf7SnrBox = document.getElementById('bpf7SnrVal');
+const bpf14SnrBox = document.getElementById('bpf14SnrVal');
+const bpf7RankBox = document.getElementById('bpf7RankVal');
+const bpf14RankBox = document.getElementById('bpf14RankVal');
+const harmTable = document.getElementById('harmonicsTable');
+const ctx = document.getElementById('spectrumCanvas').getContext('2d');
+
+function setCanvasSize() {
+  const rect = ctx.canvas.parentNode.getBoundingClientRect();
+  ctx.canvas.width = rect.width * devicePixelRatio;
+  ctx.canvas.height = 260 * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+}
+setCanvasSize(); window.addEventListener('resize', setCanvasSize);
+
+// 마이크 연결
+document.getElementById('connectBtn').onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 8192;
+    analyser.smoothingTimeConstant = 0;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    source = audioContext.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    document.getElementById('connectBtn').disabled = true;
+    document.getElementById('connectBtn').textContent = "연결됨";
+    document.getElementById('startButton').disabled = false;
+    statusBox.className = "status success";
+    statusBox.textContent = `연결 완료 (${audioContext.sampleRate}Hz)`;
+  } catch(e) {
+    statusBox.className = "status error";
+    statusBox.textContent = "마이크 오류: " + e.message;
+  }
+};
+
+document.getElementById('startButton').onclick = () => {
+  isRun = true;
+  document.getElementById('startButton').disabled = true;
+  document.getElementById('stopButton').disabled = false;
+  statusBox.className = "status info"; statusBox.textContent = "분석 중…";
+  rank7Hist = []; rank14Hist = [];
+  loop();
+};
+
+document.getElementById('stopButton').onclick = () => {
+  isRun = false; cancelAnimationFrame(raf);
+  document.getElementById('startButton').disabled = false;
+  document.getElementById('stopButton').disabled = true;
+  rankBox.className = "rank-4"; rankBox.textContent = "중지됨";
+};
+
+// SNR 계산 (Infinity 방지)
+function safeLog(x) { return x <= 0 ? -100 : 20 * Math.log10(x / 255); }
+function calcSnrDb(peakDb, noiseDb) { return isFinite(peakDb - noiseDb) ? peakDb - noiseDb : -100; }
+
+function findPeakInBand(arr, nomHz, binHz, bandPct = 0.05) {
+  if (!nomHz || nomHz <= 0) return {f: 0, snrDb: -100};
+  const rangeBin = Math.max(3, Math.round(nomHz * bandPct / binHz));
+  const nomIdx = Math.round(nomHz / binHz);
+  let maxVal = 0, maxIdx = nomIdx;
+  for (let i = nomIdx - rangeBin; i <= nomIdx + rangeBin; i++) {
+    if (i >= 0 && i < arr.length && arr[i] > maxVal) { maxVal = arr[i]; maxIdx = i; }
+  }
+  if (maxVal === 0) return {f: nomHz, snrDb: -100};
+  const peakDb = safeLog(maxVal);
+  let noiseSum = 0, noiseCnt = 0;
+  for (let i = maxIdx - 12; i <= maxIdx + 12; i++) {
+    if (i >= 0 && i < arr.length && Math.abs(i - maxIdx) > 3) { noiseSum += arr[i]; noiseCnt++; }
+  }
+  const noiseDb = noiseCnt ? safeLog(noiseSum / noiseCnt) : -100;
+  return {f: maxIdx * binHz, snrDb: calcSnrDb(peakDb, noiseDb)};
+}
+
+function determineRank(r7, r14, s7, s14) {
+  if (r14 === 1 && s14 > 15) return {text: "위험 (Rank 3)<br>14×BPF 과부하", class:"rank-3"};
+  if (r7 === 1 && s7 > 10)   return {text: "주의 (Rank 2)<br>7×BPF 부하 증가", class:"rank-2"};
+  if (r14 === 1)             return {text: "주의 (Rank 2)<br>14×BPF 1위", class:"rank-2"};
+  if (r7 === 1)              return {text: "정상 (Rank 1)<br>7×BPF 지배", class:"rank-1"};
+  return {text: "정상 (Rank 1)<br>부하 안정", class:"rank-1"};
+}
+
+function loop() {
+  if (!isRun) return;
+  analyser.getByteFrequencyData(freqData);
+
+  const sr = audioContext.sampleRate;
+  const binHz = sr / analyser.fftSize;
+
+  const rpm = getVal('rpmInput', 1500, 10);
+  const blades = getVal('bladeCountInput', 20, 1);
+  const bandPct = getVal('bandPercentInput', 0.05, 0.01);
+
+  const rsf = rpm / 60;
+  const bpf = rsf * blades || 1;        // 0 방지
+
+  // 최대 주파수
+  let maxFreq = sr/2;
+  if (document.getElementById('maxFreqSelect').value === "bpf14") {
+    maxFreq = Math.min(bpf * 14 || 1000, sr/2);
+  } else {
+    maxFreq = Math.min(parseFloat(document.getElementById('maxFreqSelect').value) || 5000, sr/2);
+  }
+
+  const points = [];
+  for(let k=1;k<=5;k++) points.push({name:`${k}×RSF`, f:rsf*k, color:"rgba(100,180,255,0.25)"});
+  for(let k=1;k<=14;k++) {
+    const col = (k===7)?"rgba(255,80,80,0.35)" : (k===14)?"rgba(255,150,0,0.35)" : "rgba(255,100,100,0.25)";
+    points.push({name:`${k}×BPF`, f:bpf*k, color:col, tag:`bpf${k}`});
+  }
+  points.push({name:"BPF-1×RSF", f:bpf-rsf, color:"rgba(255,120,120,0.25)"});
+  points.push({name:"BPF+1×RSF", f:bpf+rsf, color:"rgba(255,120,120,0.25)"});
+
+  const rankList = [];
+  let maxSnr = -100, maxF = 0, snr7 = -100, snr14 = -100;
+
+  points.forEach(p => {
+    if (!p.f || p.f <= 0) return;
+    const info = findPeakInBand(freqData, p.f, binHz, bandPct);
+    p.actualF = info.f;
+    p.snr = info.snrDb;
+
+    if (!p.name.includes("RSF")) {
+      rankList.push({name:p.name, freq:info.f, snr:info.snrDb});
+    }
+    if (p.tag==="bpf7") snr7 = info.snrDb;
+    if (p.tag==="bpf14") snr14 = info.snrDb;
+    if (info.snrDb > maxSnr) { maxSnr = info.snrDb; maxF = info.f; }
+  });
+
+  rankList.sort((a,b)=>b.snr-a.snr);
+  const rank7 = rankList.findIndex(i=>i.name==="7×BPF")+1 || 99;
+  const rank14 = rankList.findIndex(i=>i.name==="14×BPF")+1 || 99;
+
+  rank7Hist.push(rank7); rank14Hist.push(rank14);
+  const avg7 = (rank7Hist.reduce((a,b)=>a+b,0)/rank7Hist.length).toFixed(1);
+  const avg14 = (rank14Hist.reduce((a,b)=>a+b,0)/rank14Hist.length).toFixed(1);
+
+  // UI 업데이트 (Infinity 절대 안 나옴)
+  maxSnrBox.textContent = isFinite(maxSnr) ? maxSnr.toFixed(1) : "-";
+  maxSnrFreqBox.textContent = maxF.toFixed(0);
+  bpf7SnrBox.textContent = snr7.toFixed(1);
+  bpf14SnrBox.textContent = snr14.toFixed(1);
+  bpf7RankBox.textContent = `${rank7}위 (평균 ${avg7})`;
+  bpf14RankBox.textContent = `${rank14}위 (평균 ${avg14})`;
+
+  const res = determineRank(rank7, rank14, snr7, snr14);
+  rankBox.innerHTML = res.text;
+  rankBox.className = res.class;
+
+  // Top 5
+  harmTable.innerHTML = "";
+  rankList.slice(0,5).forEach((it,i) => {
+    const rc = i===0 ? "rank-1-row" : i===1 ? "rank-2-row" : "";
+    harmTable.innerHTML += `<tr class="${rc}"><td>${i+1}</td><td>${it.name}</td><td>${it.freq.toFixed(0)}</td><td><b>${it.snr.toFixed(1)}</b></td></tr>`;
+  });
+
+  // 그래프 그리기
+  const w = ctx.canvas.width / devicePixelRatio;
+  const h = ctx.canvas.height / devicePixelRatio;
+  const endIdx = Math.min(freqData.length, Math.round(maxFreq/binHz)+10);
+
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "#000"; ctx.fillRect(0,0,w,h);
+
+  ctx.beginPath();
+  for(let i=0;i<endIdx;i++){
+    const x = (i/endIdx)*w;
+    const y = h - (freqData[i]/255)*h;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle = "#00f0ff"; ctx.lineWidth = 2.2; ctx.stroke();
+
+  points.forEach(p => {
+    if (!p.f || p.f > maxFreq || p.f <= 0) return;
+    const x = (p.f / maxFreq) * w;
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 1.2;
+    if(p.name.includes("RSF")) ctx.setLineDash([6,8]);
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  raf = requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
